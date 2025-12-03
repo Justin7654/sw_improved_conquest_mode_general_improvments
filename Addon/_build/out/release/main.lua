@@ -12993,6 +12993,7 @@ function tickAI(game_ticks)
 		g_count_attack = 0
 		g_count_patrol = 0
 
+		-- gather squad counts
 		for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
 			if squad_index ~= RESUPPLY_SQUAD_INDEX then
 				if squad.command ~= SQUAD.COMMAND.DEFEND and squad.vehicle_type ~= VEHICLE.TYPE.TURRET then
@@ -13007,6 +13008,7 @@ function tickAI(game_ticks)
 			end
 		end
 
+		-- logic for attacking an island
 		local objective_island, ally_island = Objective.getIslandToAttack()
 
 		if objective_island == nil then
@@ -14314,10 +14316,6 @@ function tickVision(game_ticks)
 	end
 
 	-- analyse player vehicles
-	--[[
-		Issue: this is looping through each sub body on player vehicles, and then with a nested loop
-		looping through each AI vehicle causing lag
-	--]]
 	for player_vehicle_id, player_vehicle in pairs(g_savedata.player_vehicles) do
 		local player_vehicle_transform = player_vehicle.transform
 
@@ -14424,7 +14422,6 @@ function tickVision(game_ticks)
 		end
 	end
 
-	d.startProfiler("updKeypads", true)
 	-- update all of the keypads on the AI vehicles which are loaded
 	for _, squad in pairs(g_savedata.ai_army.squadrons) do
 		for vehicle_id, vehicle_object in pairs(squad.vehicles) do
@@ -14435,7 +14432,6 @@ function tickVision(game_ticks)
 			end
 		end
 	end
-	d.stopProfiler("updKeypads", true, "onTick()")
 	d.stopProfiler("tickVision()", true, "onTick()")
 end
 
@@ -14639,22 +14635,13 @@ function tickVehicles(game_ticks)
 							local distance = m.xzDistance(ai_target, vehicle_pos)
 	
 							if vehicle_object.vehicle_type == VEHICLE.TYPE.PLANE and distance < WAYPOINT_CONSUME_DISTANCE * 4 and vehicle_object.role == "scout" or distance < WAYPOINT_CONSUME_DISTANCE and vehicle_object.vehicle_type == VEHICLE.TYPE.PLANE or distance < WAYPOINT_CONSUME_DISTANCE and vehicle_object.vehicle_type == VEHICLE.TYPE.HELI or vehicle_object.vehicle_type == VEHICLE.TYPE.LAND and distance < 7 then
+								p.nextPath(vehicle_object)
+
 								if #vehicle_object.path > 0 then
-									p.nextPath(vehicle_object)
-
-									if #vehicle_object.path > 0 then
-										ai_target = m.translation(vehicle_object.path[1].x, vehicle_object.path[1].y, vehicle_object.path[1].z)
-									end
-
-									--[[update the current path the vehicle is on for cargo vehicles
-									if vehicle_object.role == SQUAD.COMMAND.CARGO then
-										g_savedata.cargo_vehicles[vehicle_id].path_data.current_path = g_savedata.cargo_vehicles[vehicle_id].path_data.current_path + 1
-									end
-									]]
-
+									ai_target = m.translation(vehicle_object.path[1].x, vehicle_object.path[1].y, vehicle_object.path[1].z)
 								elseif vehicle_object.role == "scout" then
 									p.resetPath(vehicle_object)
-									target_island, origin_island = Objective.getIslandToAttack(true)
+									local target_island, origin_island = Objective.getIslandToAttack(true)
 									if target_island then
 										local holding_route = g_holding_pattern
 										p.addPath(vehicle_object, m.multiply(target_island.transform, m.translation(holding_route[1].x, CRUISE_HEIGHT * 2, holding_route[1].z)))

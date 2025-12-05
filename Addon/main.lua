@@ -1371,22 +1371,13 @@ function onVehicleSpawn(vehicle_id, peer_id, x, y, z, cost)
 	if pl.isPlayer(peer_id) then
 		d.print("Player Spawned Vehicle "..vehicle_id, true, 0)
 
-		-- get the mass of it
-		local vehicle_data, is_success = server.getVehicleData(vehicle_id)
-
-		local mass = nil
-
-		if is_success then
-			mass = vehicle_data.mass
-		end
-
 		-- player spawned vehicle
 		g_savedata.player_vehicles[vehicle_id] = {
 			current_damage = 0,
 			damage_threshold = 100,
 			death_pos = nil,
 			ui_id = server.getMapID() --[[@as SWUI_ID]],
-			mass = mass
+			mass = nil
 		}
 
 		return
@@ -1613,14 +1604,6 @@ function setVehicleKeypads(group_id, vehicle_object, squad)
 
 		local target_vehicle_id = vehicle_object.target_vehicle_id
 
-		if g_savedata.player_vehicles[target_vehicle_id] and not g_savedata.player_vehicles[target_vehicle_id].mass then
-			local vehicle_data, is_success = s.getVehicleData(target_vehicle_id)
-
-			if is_success then
-				g_savedata.player_vehicles[target_vehicle_id].mass = vehicle_data.mass
-			end
-		end
-
 		if g_savedata.player_vehicles[target_vehicle_id].mass then -- target vehicle's mass
 			setKeypad(group_id, "AI_TARGET_MASS", g_savedata.player_vehicles[target_vehicle_id].mass)
 		end
@@ -1702,8 +1685,9 @@ function onVehicleLoad(vehicle_id)
 
 	-- if this is the players vehicle, get data on it
 	if g_savedata.player_vehicles[vehicle_id] ~= nil then
-		local player_vehicle_data = s.getVehicleData(vehicle_id)
+		local player_vehicle_data = s.getVehicleComponents(vehicle_id)
 		if player_vehicle_data.voxels then
+			g_savedata.player_vehicles[vehicle_id].mass = player_vehicle_data.mass
 			g_savedata.player_vehicles[vehicle_id].damage_threshold = player_vehicle_data.voxels / 4
 			g_savedata.player_vehicles[vehicle_id].transform = s.getVehiclePos(vehicle_id)
 		end
@@ -2263,6 +2247,11 @@ function getSquadLeader(squad)
 	d.print("warning: empty squad "..squad.vehicle_type.." detected", true, 1)
 end
 
+--- Returns the closest squad which either has no command or is patrolling
+--- @param transform SWMatrix the position to check from
+--- @param override_command boolean? if true, will ignore the squad's current command when searching
+--- @return squadron|nil closest_free_squad the closest free squad, nil if none found
+--- @return integer closest_free_squad_index the index of the closest free squad, -1 if none found
 function getNearbySquad(transform, override_command)
 
 	local closest_free_squad = nil
@@ -2310,6 +2299,7 @@ function tickAI(game_ticks)
 					if squad ~= nil then
 						setSquadCommandDefend(squad, island)
 						island.assigned_squad_index = squad_index
+						d.print("assigned squad "..squad_index.." to defend "..island.name, true, 0)
 					end
 				end
 			end
@@ -2582,8 +2572,10 @@ function tickAI(game_ticks)
 				if #allied_islands > 0 then
 					if (g_count_patrol / g_count_squads) < 0.5 then
 						g_count_patrol = g_count_patrol + 1
+						d.print("Assigining squad "..squad_index.." to patrol", true, 0)
 						setSquadCommandPatrol(squad, allied_islands[math.random(1, #allied_islands)])
 					else
+						d.print("Too much patroling so not assigning squad "..squad_index.." to patrol", true, 0)
 						setSquadCommandDefend(squad, allied_islands[math.random(1, #allied_islands)])
 					end
 				else
@@ -3311,6 +3303,7 @@ function tickSquadrons(game_ticks)
 				local squad_leader_id, squad_leader = getSquadLeader(squad)
 				if squad_leader then
 					if squad_leader.state.s ~= VEHICLE.STATE.PATHING then -- has finished patrol
+						d.print("patrol squad leader of squad finished pathing", true, 0)
 						setSquadCommand(squad, SQUAD.COMMAND.NONE)
 					end
 				else
@@ -3988,6 +3981,7 @@ function tickVehicles(game_ticks)
 
 						if #vehicle_object.path == 0 then
 							AI.setState(vehicle_object, VEHICLE.STATE.HOLDING)
+							d.print("Set vehicle "..vehicle_object.group_id.." to holding as it has no path waypoints", true, 0)
 						else
 							if ai_state ~= 2 then ai_state = 1 end
 
@@ -3997,7 +3991,8 @@ function tickVehicles(game_ticks)
 	
 							local vehicle_pos = vehicle_object.transform
 							local distance = m.xzDistance(ai_target, vehicle_pos)
-	
+							
+							-- Check the distance between the vehicle and its next waypoint to see if we can to consume it
 							if vehicle_object.vehicle_type == VEHICLE.TYPE.PLANE and distance < WAYPOINT_CONSUME_DISTANCE * 4 and vehicle_object.role == "scout" or distance < WAYPOINT_CONSUME_DISTANCE and vehicle_object.vehicle_type == VEHICLE.TYPE.PLANE or distance < WAYPOINT_CONSUME_DISTANCE and vehicle_object.vehicle_type == VEHICLE.TYPE.HELI or vehicle_object.vehicle_type == VEHICLE.TYPE.LAND and distance < 7 then
 								p.nextPath(vehicle_object)
 
@@ -4017,6 +4012,7 @@ function tickVehicles(game_ticks)
 									-- if we have reached last waypoint start holding there
 									--d.print("set plane "..vehicle_id.." to holding", true, 0)
 									AI.setState(vehicle_object, VEHICLE.STATE.HOLDING)
+									d.print("Set vehicle "..vehicle_object.group_id.." to holding as it reached last waypoint", true, 0)
 								end
 							elseif vehicle_object.vehicle_type == VEHICLE.TYPE.BOAT and distance < WAYPOINT_CONSUME_DISTANCE then
 								if #vehicle_object.path > 0 then
@@ -4025,6 +4021,7 @@ function tickVehicles(game_ticks)
 									-- if we have reached last waypoint start holding there
 									--d.print("set boat "..vehicle_id.." to holding", true, 0)
 									AI.setState(vehicle_object, VEHICLE.STATE.HOLDING)
+									d.print("Set vehicle "..vehicle_object.group_id.." to holding as it reached last waypoint", true, 0)
 								end
 							end
 
@@ -5604,6 +5601,9 @@ function setSquadCommandScout(squad)
 	setSquadCommand(squad, SQUAD.COMMAND.SCOUT)
 end
 
+--- @param squad squadron
+--- @param command string
+--- @return boolean changed
 function setSquadCommand(squad, command)
 	if squad.command ~= command then
 		if squad.command ~= SQUAD.COMMAND.SCOUT or squad.command == SQUAD.COMMAND.SCOUT and command == SQUAD.COMMAND.DEFEND then
@@ -5629,6 +5629,8 @@ function setSquadCommand(squad, command)
 	return false
 end
 
+--- @param squad squadron
+--- @param vehicle_object vehicle_object
 function squadInitVehicleCommand(squad, vehicle_object)
 	vehicle_object.target_vehicle_id = nil
 	vehicle_object.target_player_id = nil
@@ -5656,6 +5658,7 @@ function squadInitVehicleCommand(squad, vehicle_object)
 		p.addPath(vehicle_object, m.multiply(squad.target_island.transform, m.translation(patrol_route[3].x, cruise_altitude, patrol_route[3].z)))
 		p.addPath(vehicle_object, m.multiply(squad.target_island.transform, m.translation(patrol_route[4].x, cruise_altitude, patrol_route[4].z)))
 		p.addPath(vehicle_object, m.multiply(squad.target_island.transform, m.translation(patrol_route[5].x, cruise_altitude, patrol_route[5].z)))
+		d.print("Vehicle "..vehicle_object.group_id.." set to patrol "..squad.target_island.name..". Path length: "..#vehicle_object.path..", State: "..vehicle_object.state.s, true, 0)
 	elseif squad.command == SQUAD.COMMAND.ATTACK then
 		-- go to island, once island is captured the command will be cleared
 		p.resetPath(vehicle_object)

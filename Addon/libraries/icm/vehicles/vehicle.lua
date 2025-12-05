@@ -358,7 +358,7 @@ function Vehicle.getPowertrainTypes(vehicle_object)
 	return powertrain_types, true	
 end
 
----@param requested_prefab string? vehicle name or vehicle role, such as scout, will try to spawn that vehicle or type
+---@param requested_prefab string|integer|nil vehicle name or vehicle role, such as scout, will try to spawn that vehicle or type
 ---@param vehicle_type string? the vehicle type you want to spawn, such as boat, leave nil to ignore
 ---@param force_spawn boolean? if you want to force it to spawn, it will spawn at the ai's main base
 ---@param specified_island ISLAND|AI_ISLAND? the island you want it to spawn at
@@ -713,7 +713,7 @@ function Vehicle.spawn(requested_prefab, vehicle_type, force_spawn, specified_is
 	-- check to make sure no vehicles are too close, as this could result in them spawning inside each other
 	for _, squad in pairs(g_savedata.ai_army.squadrons) do
 		for vehicle_id, vehicle_object in pairs(squad.vehicles) do
-			if m.distance(spawn_transform, vehicle_object.transform) < (Tags.getValue(selected_prefab.vehicle.tags, "spawning_distance") or DEFAULT_SPAWNING_DISTANCE + vehicle_object.spawning_transform.distance) then
+			if m.distance(spawn_transform, vehicle_object.transform) < (Tags.getValue(selected_prefab.vehicle.tags, "spawning_radius") or DEFAULT_SPAWNING_DISTANCE + vehicle_object.spawning_transform.distance) then
 				return false, "spawn location was too close to vehicle "..vehicle_id
 			end
 		end

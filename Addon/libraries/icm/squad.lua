@@ -28,14 +28,6 @@ Squad = {}
 
 ]]
 
----@class SQUAD
----@field command string the command the squad is following.
----@field vehicle_type string the vehicle_type this squad is composed of.
----@field role string the role of this squad.
----@field vehicles table<integer, vehicle_object> the vehicles in this squad.
----@field target_island ISLAND the island they're targetting.
-
-
 --[[
 
 
@@ -46,7 +38,7 @@ Squad = {}
 
 ---@param vehicle_id integer the id of the vehicle you want to get the squad ID of
 ---@return integer|nil squad_index the index of the squad the vehicle is with, if the vehicle is invalid, then it returns nil
----@return SQUAD|nil squad the info of the squad, if not found, then returns nil
+---@return squadron|nil squad the info of the squad, if not found, then returns nil
 function Squad.getSquad(vehicle_id) -- input a vehicle's id, and it will return the squad index its from and the squad's data
 	local squad_index = g_savedata.ai_army.squad_vehicles[vehicle_id]
 	if squad_index then
@@ -64,7 +56,7 @@ end
 ---@param group_id integer the group's id
 ---@return vehicle_object? vehicle_object the vehicle object, nil if not found
 ---@return integer? squad_index the index of the squad the vehicle is with, if the vehicle is invalid, then it returns nil
----@return SQUAD? squad the info of the squad, if not found, then returns nil
+---@return squadron? squad the info of the squad, if not found, then returns nil
 function Squad.getVehicle(group_id) -- input a group's id, and it will return the vehicle_object, the squad index its from and the squad's data
 
 	local vehicle_object = nil
@@ -90,6 +82,7 @@ function Squad.getVehicle(group_id) -- input a group's id, and it will return th
 
 	return vehicle_object, squad_index, squad
 end
+a,b,ccc = Squad.getVehicle()
 
 ---@param squad_index integer? the squad's index which you want to create it under, if not specified it will use the next available index
 ---@param vehicle_object vehicle_object the vehicle object which is adding to the squad

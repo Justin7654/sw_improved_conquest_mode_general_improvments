@@ -5,7 +5,7 @@ require("libraries.utils.tables")
 -- library name
 Cache = {}
 
----@param location string where to reset the data, if left blank then resets all cache data
+---@param location string? where to reset the data, if left blank then resets all cache data
 ---@return boolean is_success returns true if successfully cleared the cache
 function Cache.reset(location) -- resets the cache
 	if not location then

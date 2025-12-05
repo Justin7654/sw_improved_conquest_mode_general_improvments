@@ -1505,12 +1505,12 @@ local addon_contributors = {
 ---@field peer_id integer the peer_id of the player
 ---@field steam_id string the steam_id of the player, as a string
 ---@field object_id integer the object_id of the player
----@field debug table<DEBUG_TYPE, boolean> a table of the debugs the player has enabled, indexed by the name of the debug, value being if its enabled or not
+---@field debug table<DebugType, boolean> a table of the debugs the player has enabled, indexed by the name of the debug, value being if its enabled or not
 ---@field acknowledgements table<nil>
 ---@field updateName function<nil> updates the player's name in player_data with the name they currently have
 ---@field updatePID function<nil> updates the player's peer_id in player_data with the peer_id they currently have
 ---@field updateOID function<nil> updates the player's object_id in player_data with the object_id they currently have
----@field getDebug function<DEBUG_ID> returns wether or not the player has the debug with the specified id enabled, set to -1 for any debug enabled
+---@field getDebug function<DebugID> returns wether or not the player has the debug with the specified id enabled, set to -1 for any debug enabled
 ---@field getSWPlayer function<nil> returns the SWPlayer attached to this player.
 
 --[[
@@ -2678,6 +2678,22 @@ d = Debugging
 
 ]]
 
+---@alias DebugType
+---| "all"
+---| "chat"
+---| "error"
+---| "profiler"
+---| "map"
+---| "graph_node"
+---| "driving"
+---| "vehicle"
+---| "function"
+---| "traceback"
+
+---@alias DebugID integer
+
+
+
 --[[
 
 
@@ -2860,11 +2876,11 @@ function Debugging.handleDebug(debug_type, enabled, peer_id)
 				b = 225
 
 				if NSO == 2 then -- darker for non NSO
-					b = 200
-					g = 50
+					b = 190
+					g = 25
 				elseif NSO == 1 then -- brighter for NSO
 					b = 255
-					g = 0
+					g = 100
 				end
 
 			elseif node_type == "land_path" then
@@ -4037,12 +4053,12 @@ function onCustomCommand(full_message, peer_id, is_admin, is_auth, prefix, comma
 					end
 
 					local value = full_message:sub(count_end + 1, value_end - 1)
-					if not tonumber(value) then
+					if not math.tointeger(value) then
 						d.print(("count value has to be a number! given value: %s"):format(value), false, 1, peer_id)
 						goto onCustomCommand_spawnVehicle_countInvalid
 					end
 
-					spawn_count = tonumber(value)
+					spawn_count = math.tointeger(value) or 1
 
 					for arg_i = 1, arg.n do
 						if arg[arg_i]:match("--count:"..value) then
@@ -5209,7 +5225,7 @@ end
 -- library name
 Cache = {}
 
----@param location string where to reset the data, if left blank then resets all cache data
+---@param location string? where to reset the data, if left blank then resets all cache data
 ---@return boolean is_success returns true if successfully cleared the cache
 function Cache.reset(location) -- resets the cache
 	if not location then
@@ -7945,14 +7961,6 @@ Squad = {}
 
 ]]
 
----@class SQUAD
----@field command string the command the squad is following.
----@field vehicle_type string the vehicle_type this squad is composed of.
----@field role string the role of this squad.
----@field vehicles table<integer, vehicle_object> the vehicles in this squad.
----@field target_island ISLAND the island they're targetting.
-
-
 --[[
 
 
@@ -7963,7 +7971,7 @@ Squad = {}
 
 ---@param vehicle_id integer the id of the vehicle you want to get the squad ID of
 ---@return integer|nil squad_index the index of the squad the vehicle is with, if the vehicle is invalid, then it returns nil
----@return SQUAD|nil squad the info of the squad, if not found, then returns nil
+---@return squadron|nil squad the info of the squad, if not found, then returns nil
 function Squad.getSquad(vehicle_id) -- input a vehicle's id, and it will return the squad index its from and the squad's data
 	local squad_index = g_savedata.ai_army.squad_vehicles[vehicle_id]
 	if squad_index then
@@ -7981,7 +7989,7 @@ end
 ---@param group_id integer the group's id
 ---@return vehicle_object? vehicle_object the vehicle object, nil if not found
 ---@return integer? squad_index the index of the squad the vehicle is with, if the vehicle is invalid, then it returns nil
----@return SQUAD? squad the info of the squad, if not found, then returns nil
+---@return squadron? squad the info of the squad, if not found, then returns nil
 function Squad.getVehicle(group_id) -- input a group's id, and it will return the vehicle_object, the squad index its from and the squad's data
 
 	local vehicle_object = nil
@@ -8007,6 +8015,7 @@ function Squad.getVehicle(group_id) -- input a group's id, and it will return th
 
 	return vehicle_object, squad_index, squad
 end
+a,b,ccc = Squad.getVehicle()
 
 ---@param squad_index integer? the squad's index which you want to create it under, if not specified it will use the next available index
 ---@param vehicle_object vehicle_object the vehicle object which is adding to the squad
@@ -8388,7 +8397,7 @@ function Vehicle.getPowertrainTypes(vehicle_object)
 	return powertrain_types, true	
 end
 
----@param requested_prefab string? vehicle name or vehicle role, such as scout, will try to spawn that vehicle or type
+---@param requested_prefab string|integer|nil vehicle name or vehicle role, such as scout, will try to spawn that vehicle or type
 ---@param vehicle_type string? the vehicle type you want to spawn, such as boat, leave nil to ignore
 ---@param force_spawn boolean? if you want to force it to spawn, it will spawn at the ai's main base
 ---@param specified_island ISLAND|AI_ISLAND? the island you want it to spawn at
@@ -8743,7 +8752,7 @@ function Vehicle.spawn(requested_prefab, vehicle_type, force_spawn, specified_is
 	-- check to make sure no vehicles are too close, as this could result in them spawning inside each other
 	for _, squad in pairs(g_savedata.ai_army.squadrons) do
 		for vehicle_id, vehicle_object in pairs(squad.vehicles) do
-			if m.distance(spawn_transform, vehicle_object.transform) < (Tags.getValue(selected_prefab.vehicle.tags, "spawning_distance") or DEFAULT_SPAWNING_DISTANCE + vehicle_object.spawning_transform.distance) then
+			if m.distance(spawn_transform, vehicle_object.transform) < (Tags.getValue(selected_prefab.vehicle.tags, "spawning_radius") or DEFAULT_SPAWNING_DISTANCE + vehicle_object.spawning_transform.distance) then
 				return false, "spawn location was too close to vehicle "..vehicle_id
 			end
 		end
@@ -12007,22 +12016,13 @@ function onVehicleSpawn(vehicle_id, peer_id, x, y, z, cost)
 	if pl.isPlayer(peer_id) then
 		d.print("Player Spawned Vehicle "..vehicle_id, true, 0)
 
-		-- get the mass of it
-		local vehicle_data, is_success = server.getVehicleData(vehicle_id)
-
-		local mass = nil
-
-		if is_success then
-			mass = vehicle_data.mass
-		end
-
 		-- player spawned vehicle
 		g_savedata.player_vehicles[vehicle_id] = {
 			current_damage = 0,
 			damage_threshold = 100,
 			death_pos = nil,
 			ui_id = server.getMapID() --[[@as SWUI_ID]],
-			mass = mass
+			mass = nil
 		}
 
 		return
@@ -12249,14 +12249,6 @@ function setVehicleKeypads(group_id, vehicle_object, squad)
 
 		local target_vehicle_id = vehicle_object.target_vehicle_id
 
-		if g_savedata.player_vehicles[target_vehicle_id] and not g_savedata.player_vehicles[target_vehicle_id].mass then
-			local vehicle_data, is_success = s.getVehicleData(target_vehicle_id)
-
-			if is_success then
-				g_savedata.player_vehicles[target_vehicle_id].mass = vehicle_data.mass
-			end
-		end
-
 		if g_savedata.player_vehicles[target_vehicle_id].mass then -- target vehicle's mass
 			setKeypad(group_id, "AI_TARGET_MASS", g_savedata.player_vehicles[target_vehicle_id].mass)
 		end
@@ -12338,8 +12330,9 @@ function onVehicleLoad(vehicle_id)
 
 	-- if this is the players vehicle, get data on it
 	if g_savedata.player_vehicles[vehicle_id] ~= nil then
-		local player_vehicle_data = s.getVehicleData(vehicle_id)
+		local player_vehicle_data = s.getVehicleComponents(vehicle_id)
 		if player_vehicle_data.voxels then
+			g_savedata.player_vehicles[vehicle_id].mass = player_vehicle_data.mass
 			g_savedata.player_vehicles[vehicle_id].damage_threshold = player_vehicle_data.voxels / 4
 			g_savedata.player_vehicles[vehicle_id].transform = s.getVehiclePos(vehicle_id)
 		end
@@ -12899,6 +12892,11 @@ function getSquadLeader(squad)
 	d.print("warning: empty squad "..squad.vehicle_type.." detected", true, 1)
 end
 
+--- Returns the closest squad which either has no command or is patrolling
+--- @param transform SWMatrix the position to check from
+--- @param override_command boolean? if true, will ignore the squad's current command when searching
+--- @return squadron|nil closest_free_squad the closest free squad, nil if none found
+--- @return integer closest_free_squad_index the index of the closest free squad, -1 if none found
 function getNearbySquad(transform, override_command)
 
 	local closest_free_squad = nil
@@ -12946,6 +12944,7 @@ function tickAI(game_ticks)
 					if squad ~= nil then
 						setSquadCommandDefend(squad, island)
 						island.assigned_squad_index = squad_index
+						d.print("assigned squad "..squad_index.." to defend "..island.name, true, 0)
 					end
 				end
 			end
@@ -13218,8 +13217,10 @@ function tickAI(game_ticks)
 				if #allied_islands > 0 then
 					if (g_count_patrol / g_count_squads) < 0.5 then
 						g_count_patrol = g_count_patrol + 1
+						d.print("Assigining squad "..squad_index.." to patrol", true, 0)
 						setSquadCommandPatrol(squad, allied_islands[math.random(1, #allied_islands)])
 					else
+						d.print("Too much patroling so not assigning squad "..squad_index.." to patrol", true, 0)
 						setSquadCommandDefend(squad, allied_islands[math.random(1, #allied_islands)])
 					end
 				else
@@ -13947,6 +13948,7 @@ function tickSquadrons(game_ticks)
 				local squad_leader_id, squad_leader = getSquadLeader(squad)
 				if squad_leader then
 					if squad_leader.state.s ~= VEHICLE.STATE.PATHING then -- has finished patrol
+						d.print("patrol squad leader of squad finished pathing", true, 0)
 						setSquadCommand(squad, SQUAD.COMMAND.NONE)
 					end
 				else
@@ -14624,6 +14626,7 @@ function tickVehicles(game_ticks)
 
 						if #vehicle_object.path == 0 then
 							AI.setState(vehicle_object, VEHICLE.STATE.HOLDING)
+							d.print("Set vehicle "..vehicle_object.group_id.." to holding as it has no path waypoints", true, 0)
 						else
 							if ai_state ~= 2 then ai_state = 1 end
 
@@ -14633,7 +14636,8 @@ function tickVehicles(game_ticks)
 	
 							local vehicle_pos = vehicle_object.transform
 							local distance = m.xzDistance(ai_target, vehicle_pos)
-	
+							
+							-- Check the distance between the vehicle and its next waypoint to see if we can to consume it
 							if vehicle_object.vehicle_type == VEHICLE.TYPE.PLANE and distance < WAYPOINT_CONSUME_DISTANCE * 4 and vehicle_object.role == "scout" or distance < WAYPOINT_CONSUME_DISTANCE and vehicle_object.vehicle_type == VEHICLE.TYPE.PLANE or distance < WAYPOINT_CONSUME_DISTANCE and vehicle_object.vehicle_type == VEHICLE.TYPE.HELI or vehicle_object.vehicle_type == VEHICLE.TYPE.LAND and distance < 7 then
 								p.nextPath(vehicle_object)
 
@@ -14653,6 +14657,7 @@ function tickVehicles(game_ticks)
 									-- if we have reached last waypoint start holding there
 									--d.print("set plane "..vehicle_id.." to holding", true, 0)
 									AI.setState(vehicle_object, VEHICLE.STATE.HOLDING)
+									d.print("Set vehicle "..vehicle_object.group_id.." to holding as it reached last waypoint", true, 0)
 								end
 							elseif vehicle_object.vehicle_type == VEHICLE.TYPE.BOAT and distance < WAYPOINT_CONSUME_DISTANCE then
 								if #vehicle_object.path > 0 then
@@ -14661,6 +14666,7 @@ function tickVehicles(game_ticks)
 									-- if we have reached last waypoint start holding there
 									--d.print("set boat "..vehicle_id.." to holding", true, 0)
 									AI.setState(vehicle_object, VEHICLE.STATE.HOLDING)
+									d.print("Set vehicle "..vehicle_object.group_id.." to holding as it reached last waypoint", true, 0)
 								end
 							end
 
@@ -16240,6 +16246,9 @@ function setSquadCommandScout(squad)
 	setSquadCommand(squad, SQUAD.COMMAND.SCOUT)
 end
 
+--- @param squad squadron
+--- @param command string
+--- @return boolean changed
 function setSquadCommand(squad, command)
 	if squad.command ~= command then
 		if squad.command ~= SQUAD.COMMAND.SCOUT or squad.command == SQUAD.COMMAND.SCOUT and command == SQUAD.COMMAND.DEFEND then
@@ -16265,6 +16274,8 @@ function setSquadCommand(squad, command)
 	return false
 end
 
+--- @param squad squadron
+--- @param vehicle_object vehicle_object
 function squadInitVehicleCommand(squad, vehicle_object)
 	vehicle_object.target_vehicle_id = nil
 	vehicle_object.target_player_id = nil
@@ -16292,6 +16303,7 @@ function squadInitVehicleCommand(squad, vehicle_object)
 		p.addPath(vehicle_object, m.multiply(squad.target_island.transform, m.translation(patrol_route[3].x, cruise_altitude, patrol_route[3].z)))
 		p.addPath(vehicle_object, m.multiply(squad.target_island.transform, m.translation(patrol_route[4].x, cruise_altitude, patrol_route[4].z)))
 		p.addPath(vehicle_object, m.multiply(squad.target_island.transform, m.translation(patrol_route[5].x, cruise_altitude, patrol_route[5].z)))
+		d.print("Vehicle "..vehicle_object.group_id.." set to patrol "..squad.target_island.name..". Path length: "..#vehicle_object.path..", State: "..vehicle_object.state.s, true, 0)
 	elseif squad.command == SQUAD.COMMAND.ATTACK then
 		-- go to island, once island is captured the command will be cleared
 		p.resetPath(vehicle_object)

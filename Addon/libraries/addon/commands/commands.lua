@@ -452,12 +452,12 @@ function onCustomCommand(full_message, peer_id, is_admin, is_auth, prefix, comma
 					end
 
 					local value = full_message:sub(count_end + 1, value_end - 1)
-					if not tonumber(value) then
+					if not math.tointeger(value) then
 						d.print(("count value has to be a number! given value: %s"):format(value), false, 1, peer_id)
 						goto onCustomCommand_spawnVehicle_countInvalid
 					end
 
-					spawn_count = tonumber(value)
+					spawn_count = math.tointeger(value) or 1
 
 					for arg_i = 1, arg.n do
 						if arg[arg_i]:match("--count:"..value) then

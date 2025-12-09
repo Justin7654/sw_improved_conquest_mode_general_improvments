@@ -384,10 +384,743 @@ g_savedata = {
 }
 
 -- libraries
--- required libraries
 --[[
 	
-Copyright 2024 Liam Matthews
+Copyright 2025 Liam Matthews
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+]]
+---@param str string the string to make the first letter uppercase
+---@return string|nil str the string with the first letter uppercase
+function string.upperFirst(str)
+	if type(str) == "string" then
+		return (str:gsub("^%l", string.upper))
+	end
+	return nil
+end
+
+--- @param str string the string the make friendly
+--- @param remove_spaces boolean? true for if you want to remove spaces, will also remove all underscores instead of replacing them with spaces
+--- @param keep_caps boolean? if you want to keep the caps of the name, false will make all letters lowercase
+--- @return string|nil friendly_string friendly string, nil if input_string was not a string
+function string.friendly(str, remove_spaces, keep_caps) -- function that replaced underscores with spaces and makes it all lower case, useful for player commands so its not extremely picky
+
+	if not str or type(str) ~= "string" then
+		d.print("(string.friendly) str is not a string! type: "..tostring(type(str)).." provided str: "..tostring(str), true, 1)
+		return nil
+	end
+
+	-- make all lowercase
+	
+	local friendly_string = not keep_caps and string.lower(str) or str
+
+	-- replace all underscores with spaces
+	friendly_string = string.gsub(friendly_string, "_", " ")
+
+	-- if remove_spaces is true, remove all spaces
+	if remove_spaces then
+		friendly_string = string.gsub(friendly_string, " ", "")
+	end
+
+	return friendly_string
+end
+
+---@param vehicle_name string the name you want to remove the prefix of
+---@param keep_caps boolean? if you want to keep the caps of the name, false will make all letters lowercase
+---@return string vehicle_name the vehicle name without its vehicle type prefix
+function string.removePrefix(vehicle_name, keep_caps)
+
+	if not vehicle_name then
+		d.print("(string.removePrefix) vehicle_name is nil!", true, 1)
+		return vehicle_name
+	end
+
+	local vehicle_type_prefixes = {
+		"BOAT %- ",
+		"HELI %- ",
+		"LAND %- ",
+		"TURRET %- ",
+		"PLANE %- "
+	}
+
+	-- replaces underscores with spaces
+	local vehicle_name = string.gsub(vehicle_name, "_", " ")
+
+	-- remove the vehicle type prefix from the entered vehicle name
+	for _, prefix in ipairs(vehicle_type_prefixes) do
+		vehicle_name = string.gsub(vehicle_name, prefix, "")
+	end
+
+	-- makes the string friendly
+	vehicle_name = string.friendly(vehicle_name, false, keep_caps)
+
+	if not vehicle_name then
+		d.print("(string.removePrefix) string.friendly() failed, and now vehicle_name is nil!", true, 1)
+		return ""
+	end
+
+	return vehicle_name
+end
+
+--- Returns a string in a format that looks like how the table would be written.
+---@param t table the table you want to turn into a string
+---@return string str the table but in string form.
+function string.fromTable(t)
+
+	if type(t) ~= "table" then
+		d.print(("(string.fromTable) t is not a table! type of t: %s t: %s"):format(type(t), t), true, 1)
+	end
+
+	local function tableToString(T, S, ind)
+		S = S or "{"
+		ind = ind or "  "
+
+		local table_length = table.length(T)
+		local table_counter = 0
+
+		for index, value in pairs(T) do
+
+			table_counter = table_counter + 1
+			if type(index) == "number" then
+				S = ("%s\n%s[%s] = "):format(S, ind, tostring(index))
+			elseif type(index) == "string" and tonumber(index) and math.isWhole(tonumber(index)) then
+				S = ("%s\n%s\"%s\" = "):format(S, ind, index)
+			else
+				S = ("%s\n%s%s = "):format(S, ind, tostring(index))
+			end
+
+			if type(value) == "table" then
+				S = ("%s{"):format(S)
+				S = tableToString(value, S, ind.."  ")
+			elseif type(value) == "string" then
+				S = ("%s\"%s\""):format(S, tostring(value))
+			else
+				S = ("%s%s"):format(S, tostring(value))
+			end
+
+			S = ("%s%s"):format(S, table_counter == table_length and "" or ",")
+		end
+
+		S = ("%s\n%s}"):format(S, string.gsub(ind, "  ", "", 1))
+
+		return S
+	end
+
+	return tableToString(t)
+end
+
+--- returns the number of instances of that character in the string
+---@param str string the string we are wanting to check
+---@param char any the character(s) we are wanting to count for in str, note that this is as a lua pattern
+---@return number count the number of instances of char, if there was an error, count will be 0, and is_success will be false
+---@return boolean is_success if we successfully got the number of instances of the character
+function string.countCharInstances(str, char)
+
+	if type(str) ~= "string" then
+		d.print(("(string.countCharInstances) str is not a string! type of str: %s str: %s"):format(type(str), str), true, 1)
+		return 0, false
+	end
+
+	char = tostring(char)
+
+	local _, count = string.gsub(str, char, "")
+
+	return count, true
+end
+
+--- Turns a string into a boolean, returns nil if not possible.
+---@param val any the value we want to turn into a boolean
+---@return boolean|nil bool the string turned into a boolean, is nil if string is not able to be turned into a boolean
+function string.toboolean(val)
+
+	local val_type = type(val)
+	
+	if val_type == "boolean" then
+		-- early out for booleans
+		return val
+	elseif val_type ~= "string" then
+		-- non strings cannot be "true" or "false", so will never return a boolean, so just early out.
+		return nil
+	end
+
+	local str = string.lower(val)
+
+	-- not convertable, return nil
+	if str ~= "true" and str ~= "false" then
+		return nil
+	end
+
+	-- convert
+	return str == "true"
+end
+
+--- Turns a value from a string into its proper value, eg: "true" becomes a boolean of true, and ""true"" becomes a string of "true"
+---@param val any the value to convert
+---@return any parsed_value the converted value
+function string.parseValue(val)
+	local val_type = type(val)
+
+	-- early out (no need to convert)
+	if val_type ~= "string" then
+		return val
+	end
+
+	-- value as an integer
+	local val_int = math.tointeger(val)
+	if val_int then return val_int end
+
+	-- value as a number
+	local val_num = tonumber(val)
+	if val_num then return val_num end
+
+	-- value as a boolean
+	local val_bool = string.toboolean(val)
+	if val_bool ~= nil then return val_bool end
+
+	-- value as a table
+	if val:sub(1, 1) == "{" then
+		local val_tab = table.fromString(val)
+
+		if val_tab then return val_tab end
+	end
+
+	--[[
+		assume its a string
+	]]
+
+	-- if it has a " at the start, remove it
+	if val:sub(1, 1) == "\"" then
+		val = val:sub(2, val:len())
+	end
+
+	-- if it has a " at the end, remove it
+	local val_len = val:len()
+	if val:sub(val_len, val_len) == "\"" then
+		val = val:sub(1, val_len - 1)
+	end
+
+	-- return the string
+	return val
+end
+
+-- variables for if you want to account for leap years or not.
+local days_in_a_year = 365.25
+local days_per_month = days_in_a_year/12
+
+---@class timeFormatUnit -- how to format each unit, use ${plural} to have an s be added if the number is plural.
+---@field prefix string the string before the number
+---@field suffix string the string after the number
+
+---@alias timeFormatUnits
+---| '"millisecond"'
+---| '"second"'
+---| '"minute"'
+---| '"hour"'
+---| '"day"'
+---| '"week"'
+---| '"month"'
+---| '"year"'
+
+---@class timeFormat
+---@field show_zeros boolean if zeros should be shown, if true, units with a value of 0 will be removed.
+---@field time_zero_string string the string to show if the time specified is 0
+---@field seperator string the seperator to be put inbetween each unit.
+---@field final_seperator string the seperator to put for the space inbetween the last units in the list
+---@field largest_first boolean if it should be sorted so the string has the highest unit be put first, set false to have the lowest unit be first.
+---@field units table<timeFormatUnits, timeFormatUnit>
+
+time_formats = {
+	yMwdhmsMS = {
+		show_zeros = false,
+		time_zero_string = "less than 1 millisecond",
+		seperator = ", ",
+		final_seperator = ", and ",
+		largest_first = true,
+		units = {
+			millisecond = {
+				prefix = "",
+				suffix = " millisecond${plural}"
+			},
+			second = {
+				prefix = "",
+				suffix = " second${plural}"
+			},
+			minute = {
+				prefix = "",
+				suffix = " minute${plural}"
+			},
+			hour = {
+				prefix = "",
+				suffix = " hour${plural}"
+			},
+			day = {
+				prefix = "",
+				suffix = " day${plural}"
+			},
+			week = {
+				prefix = "",
+				suffix = " week${plural}"
+			},
+			month = {
+				prefix = "",
+				suffix = " month${plural}"
+			},
+			year = {
+				prefix = "",
+				suffix = " year${plural}"
+			}
+		}
+	},
+	yMdhms = {
+		show_zeros = false,
+		time_zero_string = "less than 1 second",
+		seperator = ", ",
+		final_seperator = ", and ",
+		largest_first = true,
+		units = {
+			second = {
+				prefix = "",
+				suffix = " second${plural}"
+			},
+			minute = {
+				prefix = "",
+				suffix = " minute${plural}"
+			},
+			hour = {
+				prefix = "",
+				suffix = " hour${plural}"
+			},
+			day = {
+				prefix = "",
+				suffix = " day${plural}"
+			},
+			month = {
+				prefix = "",
+				suffix = " month${plural}"
+			},
+			year = {
+				prefix = "",
+				suffix = " year${plural}"
+			}
+		}
+	}
+}
+
+---@type table<timeFormatUnits, number> the seconds needed to make up each unit.
+local seconds_per_unit = {
+	millisecond = 0.001,
+	second = 1,
+	minute = 60,
+	hour = 3600,
+	day = 86400,
+	week = 604800,
+	month = 86400*days_per_month,
+	year = 86400*days_in_a_year
+}
+
+-- 1 being smallest unit, going up to largest unit
+---@type table<integer, timeFormatUnits>
+local unit_heiarchy = {
+	"millisecond",
+	"second",
+	"minute",
+	"hour",
+	"day",
+	"week",
+	"month",
+	"year"
+}
+
+---[[@param formatting string the way to format it into time, wrap the following in ${}, overflow will be put into the highest unit available. t is ticks, ms is milliseconds, s is seconds, m is minutes, h is hours, d is days, w is weeks, M is months, y is years. if you want to hide the number if its 0, use : after the time type, and then optionally put the message after that you want to only show if that time unit is not 0, for example, "${s: seconds}", enter "default" to use the default formatting.]]
+
+---@param format timeFormat the format type, check the time_formats table for examples or use one from there.
+---@param time number the time in seconds, decimals can be used for milliseconds.
+---@param as_game_time boolean? if you want it as in game time, leave false or nil for irl time (yet to be supported)
+---@return string formatted_time the time formatted into a more readable string.
+function string.formatTime(format, time, as_game_time)
+	--[[if formatting == "default" then
+		formatting = "${y: years, }${M: months, }${d: days, }${h: hours, }${m: minutes, }${s: seconds, }${ms: milliseconds}"]]
+
+	-- return the time_zero_string if the given time is zero.
+	if time == 0 then
+		return format.time_zero_string
+	end
+
+	local leftover_time = time
+
+	---@class formattedUnit
+	---@field unit_string string the string to put for this unit
+	---@field unit_name timeFormatUnits the unit's type
+
+	---@type table<integer, formattedUnit>
+	local formatted_units = {}
+
+	-- go through all of the units, largest unit to smallest.
+	for unit_index = #unit_heiarchy, 1, -1 do
+		-- get it's name
+		local unit_name = unit_heiarchy[unit_index]
+
+		-- the unit's format data
+		local unit_data = format.units[unit_name]
+
+		-- unit data is nil if its not formatted, so just skip if its not in the formatting
+		if not unit_data then
+			goto next_unit
+		end
+
+		-- how many seconds can go into this unit
+		local seconds_in_unit =  seconds_per_unit[unit_name]
+
+		-- get the number of this unit from the given time.
+		local time_unit_instances = leftover_time/seconds_in_unit
+
+		-- skip this unit if we don't want to show zeros, and this is less than 1.
+		if not format.show_zeros and math.abs(time_unit_instances) < 1 then
+			goto next_unit
+		end
+
+		-- format this unit
+		local unit_string = ("%s%0.0f%s"):format(unit_data.prefix, time_unit_instances, unit_data.suffix)
+
+		-- if this unit is not 1, then add an s to where it wants the plurals to be.
+		unit_string = unit_string:setField("plural", math.floor(time_unit_instances) == 1 and "" or "s")
+
+		-- add the formatted unit to the formatted units table.
+		table.insert(formatted_units, {
+			unit_string = unit_string,
+			unit_name = unit_name
+		} --[[@as formattedUnit]])
+
+		-- subtract the amount of time this unit used up, from the leftover time.
+		leftover_time = leftover_time - math.floor(time_unit_instances)*seconds_in_unit
+
+		::next_unit::
+	end
+
+	-- theres no formatted units, just put the message for when the time is zero.
+	if #formatted_units == 0 then
+		return format.time_zero_string
+	end
+
+	-- sort the formatted_units table by the way the format wants it sorted.
+	table.sort(formatted_units,
+		function(a, b)
+			return math.xor(
+				seconds_per_unit[a.unit_name] < seconds_per_unit[b.unit_name],
+				format.largest_first
+			)
+		end
+	)
+
+	local formatted_time = formatted_units[1].unit_string
+
+	local formatted_unit_count = #formatted_units
+	for formatted_unit_index = 2, formatted_unit_count do
+		if formatted_unit_index == formatted_unit_count then
+			formatted_time = formatted_time..format.final_seperator..formatted_units[formatted_unit_index].unit_string
+		else
+			formatted_time = formatted_time..format.seperator..formatted_units[formatted_unit_index].unit_string
+		end
+	end
+
+	return formatted_time
+end
+
+---# Sets the field in a string
+--- for example: <br> 
+---> self: "Money: ${money}" <br> field: "money" <br> value: 100 <br> **returns: "Money: 100"**
+---
+--- <br> This function is almost interchangable with gsub, but first checks if the string matches, which might help with performance in certain scenarios, also doesn't require the user to type the ${}, and can be cleaner to read.
+---@param str string the string to set the fields in
+---@param field string the field to set
+---@param value any the value to set the field to
+---@param skip_check boolean|nil if it should skip the check for if the field is in the string.
+---@return string str the string with the field set.
+function string.setField(str, field, value, skip_check)
+
+	local field_str = ("${%s}"):format(field)
+	-- early return, as the field is not in the string.
+	if not skip_check and not str:match(field_str) then
+		return str
+	end
+
+	-- set the field.
+	str = str:gsub(field_str, tostring(value))
+
+	return str
+end
+
+---# if a string has a field <br>
+---
+--- Useful for if you dont need to figure out the value to write for the field if it doesn't exist, to help with performance in certain scenarios
+---@param str string the string to find the field in.
+---@param field string the field to find in the string.
+---@return boolean found_field if the field was found.
+function string.hasField(str, field)
+	return str:match(("${%s}"):format(field))
+end
+
+function string:toLiteral(literal_percent)
+	if literal_percent then
+		return self:gsub("([%(%)%.%%%+%-%*%?%[%^%$])", "%%%%%1")
+	end
+
+	return self:gsub("([%(%)%.%%%+%-%*%?%[%^%$])", "%%%1")
+end
+
+
+---@diagnostic disable:duplicate-doc-field
+---@diagnostic disable:duplicate-doc-alias
+---@diagnostic disable:duplicate-set-field
+
+--[[ 
+	Command system, used to be able to register commands from other scripts within this addon.
+	This is to keep this script clean and have the commands that relate to those specific scripts,
+	be within those specific scripts.
+]]
+
+---@alias commandName string
+---@alias prefix string
+
+---@alias defaultCommandPermissions "none"|"auth"|"admin"|"script"|"auth_script"|"admin_script"
+
+---@alias commandFunctionToExecute fun(full_message: string, peer_id: integer, ...)
+
+---@class Command
+---@field name string the name of the command
+---@field function_to_execute commandFunctionToExecute the function to execute when the command is called, given params are: full_message, peer_id, arg
+---@field required_permission defaultCommandPermissions|string the permission this command requires
+---@field description string the description of the command
+---@field short_description string the short description for this command
+---@field examples table<integer, string> the examples of using this command
+---@field args string the arguments for this command, eg: "<arg1> [arg2]"
+---@field prefix string the prefix for this command
+
+--[[
+-- where all of the registered commands are stored
+---@type table<string, command>
+local registered_commands = {}
+]]
+command_aliases = {
+	dbg = "debug",
+	pseudospeed = "speed",
+	sv = "spawnvehicle",
+	dv = "deletevehicle",
+	kill = "deletevehicle",
+	cp = "capturepoint",
+	capture = "capturepoint",
+	captureisland = "capturepoint",
+	st = "spawnturret",
+	si = "scoutintel",
+	setintel = "scoutintel",
+	vl = "vehiclelist",
+	listvehicles = "vehiclelist",
+	tp = "teleport",
+	teleport_vehicle = "teleport",
+	kamikaze = "airvehicleskamikaze"
+}
+
+---@type table<prefix, table<commandName, Command>>
+commands = {}
+
+-- where all of the registered permissions are stored.
+---@type table<defaultCommandPermissions|string, function>
+local registered_command_permissions = {}
+
+Command = {}
+
+-- intercept onCustomCommand calls
+local old_onCustomCommand = onCustomCommand
+function onCustomCommand(full_message, peer_id, is_admin, is_auth, prefix, command, ...)
+	-- avoid error if onCustomCommand is not used anywhere else before.
+	if old_onCustomCommand then
+		old_onCustomCommand(full_message, peer_id, is_admin, is_auth, prefix, command, ...)
+	end
+
+	-- avoid errors if prefix is not specified
+	if not prefix then return end
+
+	-- avoid errors if command is not specified
+	if not command then return end
+
+	-- make the prefix lowercase
+	prefix = prefix:lower()
+
+	-- if the prefix does not pertain to this addon
+	if not commands[prefix] then return end
+
+	-- make the command lowercase
+	command = command:friendly()
+
+	-- check for command aliases
+	if command_aliases[command] then
+		command = command_aliases[command]
+	end
+
+	-- if the command does not exist for the provided prefix
+	if not commands[prefix][command] then return end
+
+	local command_data = commands[prefix][command]
+
+	-- the permission required to execute this command, if the permission is not found, default to admin.
+	local command_permission = registered_command_permissions[command_data.required_permission] or registered_command_permissions.admin
+
+	-- if the required permission is not met
+	if not command_permission(peer_id) then
+
+		local required_permission_name = registered_command_permissions[command_data.required_permission] and command_data.required_permission or "admin"
+		
+		if peer_id ~= -1 then
+			-- if a player tried executing the command
+			d.print(("You require the permission %s to execute this command!"):format(required_permission_name), false, 1, peer_id)
+		else
+			-- if a script tried to execute the command
+			d.print(("A script tried to call the command %s, but it does not privilages to execute this command, as it requires the permission %s"):format(command, required_permission_name), true, 1)
+		end
+
+		return
+	end
+
+	-- if dlc_weapons is disabled or the player does not have it (if in singleplayer)
+	local args = table.pack(...)
+	if not is_dlc_weapons then
+
+		if not full_message:match("-f") then
+
+			--? if vanilla conquest mode was left enabled
+			if g_savedata.info.addons.default_conquest_mode then
+				d.print("Improved Conquest Mode is disabled as you left Vanilla Conquest Mode enabled! Please create a new world and disable \"DLC Weapons AI\"", false, 1, peer_id)
+			end
+
+			d.print("Error: Improved Conquest Mode has been disabled.", false, 1, peer_id)
+
+			return
+		end
+
+		d.print("Bypassed addon being disabled!", false, 0, peer_id)
+
+		-- remove -f from the args
+		for argument = 1, #arg do
+			if arg[argument] == "-f" then
+				table.remove(arg, argument)
+			end
+		end
+	end
+
+	-- call the command
+	command_data.function_to_execute(full_message, peer_id, args)
+
+	return true
+end
+
+---@param prefix prefix? the string of the prefix to use, eg: "ICM" if left nil, uses SHORT_ADDON_NAME instead.
+---@return string formatted_prefix the prefix, but formatted properly.
+function Command.formatPrefix(prefix)
+	prefix = prefix or SHORT_ADDON_NAME
+
+	-- Make the prefix lowercase.
+	prefix = prefix:lower()
+
+	-- Add the question mark to the start of the prefix if wasn't already added.
+	if prefix:sub(1, 1) ~= "?" then
+		prefix = "?"..prefix
+	end
+
+	-- return the formatted prefix
+	return prefix
+end
+
+---# Registers a command
+---@param name commandName the name of the command
+---@param function_to_execute commandFunctionToExecute the function to execute when the command is called, params are (full_message, peer_id, args)
+---@param required_permission defaultCommandPermissions|string the permission required to execute this command.
+---@param description string the description of the command
+---@param short_description string the shortened description of the command
+---@param examples table<integer, string> examples of using the command, prefix and the command will be added to the strings automatically.
+---@param args string? the arguments for this command, eg: "<arg1> [arg2]"
+---@param unformatted_prefix prefix? the prefix for the command, leave blank to use the addon's short name as the prefix.
+function Command.registerCommand(name, function_to_execute, required_permission, description, short_description, examples, args, unformatted_prefix)
+	
+	-- Format the prefix.
+	local prefix = Command.formatPrefix(unformatted_prefix)
+
+	-- make the name friendly
+	name = name:friendly() --[[@as string]]
+
+	-- if this command has already been registered.
+	if commands[prefix] and commands[prefix][name] then
+		d.print(("Attempted to register a duplicate command \"%s\""):format(name), true, 1)
+		return
+	end
+	
+	---@type Command
+	local command_data = {
+		name = name,
+		function_to_execute = function_to_execute,
+		required_permission = required_permission or "admin",
+		description = description or "",
+		short_description = short_description or "",
+		examples = examples or {},
+		args = args or "",
+		prefix = prefix
+	}
+
+	-- if the table of commands with this prefix does not yet exist, create it.
+	commands[prefix] = commands[prefix] or {}
+
+	-- register this command.
+	commands[prefix][name] = command_data
+end
+
+---@param name string the name of this permission
+---@param has_permission function the function to execute, to check if the player has permission (arg1 is peer_id)
+function Command.registerPermission(name, has_permission)
+
+	-- if the permission already exists
+	if registered_command_permissions[name] then
+
+		--[[
+			this can be quite a bad error, so it bypasses debug being disabled.
+
+			for example, library A adds a permission called "mod", for mod authors
+			and then after, library B adds a permission called "mod", for moderators of the server
+			
+			when this fails, any commands library B will now just require the requirements for mod authors
+			now you've got issues of mod authors being able to access moderator commands
+
+			so having this always alert is to try to make this issue obvious. as if it was just silent in
+			the background, suddenly you've got privilage elevation.
+		]]
+		d.print(("(Command.registerPermission) Permission level %s is already registered!"):format(name), false, 1)
+		return
+	end
+
+	registered_command_permissions[name] = has_permission
+end
+
+--[[
+
+	Scripts to be put after this one
+
+]]
+
+--[[
+	Definitions
+]]
+--[[
+	
+Copyright 2025 Liam Matthews
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -403,414 +1136,14 @@ limitations under the License.
 
 ]]
 
---[[ 
-	Flag command, used to manage more advanced settings.
-	Compliments the settings command, setting command is made to handle less
-	complex commands, and ones that should be set on the world's creation.
-	While flags are ones that may be set for compatiblity reasons, such as if
-	it adding currency rewards is incompatible with another addon on a server,
-	the economy module could be disabled via a flag.
-]]
-
--- required libraries
-
--- where all of the registered flags are stored, their current values get stored in g_savedata.flags instead, though.
----@type table<string, BooleanFlag | IntegerFlag | NumberFlag | StringFlag | AnyFlag>
-local registered_flags = {}
-
-
--- where all of the registered permissions are stored.
-local registered_permissions = {}
-
--- stores the functions for flags
-Flag = {}
-
----@param name string the name of this permission
----@param has_permission function the function to execute, to check if the player has permission (arg1 is peer_id)
-function Flag.registerPermission(name, has_permission)
-
-	-- if the permission already exists
-	if registered_permissions[name] then
-
-		--[[
-			this can be quite a bad error, so it bypasses debug being disabled.
-
-			for example, library A adds a permission called "mod", for mod authors
-			and then after, library B adds a permission called "mod", for moderators of the server
-			
-			when this fails, any commands library B will now just require the requirements for mod authors
-			now you've got issues of mod authors being able to access moderator commands
-
-			so having this always alert is to try to make this issue obvious. as if it was just silent in
-			the background, suddenly you've got privilage elevation.
-		]]
-		d.print(("(Flag.registerPermission) Permission level %s is already registered!"):format(name), false, 1)
-		return
-	end
-
-	registered_permissions[name] = has_permission
-end
-
---# Register a boolean flag, can only be true or false.
----@param name string the name of the flag
----@param default_value boolean the default_value for this flag
----@param tags table<integer, string> a table of tags for this flag, can be used to filter tags for displaying to the user.
----@param read_permission_requirement string the permission required to read this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
----@param write_permission_requirement string the permission required to write to this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
----@param function_to_execute function|nil the function to execute when this value is set. params are (in order): "value, old_value, peer_id", if you do not need to specify a function, just provide nil to avoid extra performance cost of calling an empty function.
----@param description string the description of the flag
-function Flag.registerBooleanFlag(name, default_value, tags, read_permission_requirement, write_permission_requirement, function_to_execute, description)
-	local function_name = "Flag.registerBooleanFlag"
-
-	-- if this flag has already been registered
-	if registered_flags[name] then
-		d.print(("(%s) Flag %s already exists!"):format(function_name, name), true, 1)
-		return
-	end
-
-	---@class BooleanFlag
-	local flag = {
-		name = name,
-		default_value = default_value,
-		tags = tags,
-		read_permission_requirement = read_permission_requirement,
-		write_permission_requirement = write_permission_requirement,
-		function_to_execute = function_to_execute,
-		flag_type = "boolean"
-	}
-
-	registered_flags[name] = flag
-
-	if g_savedata.flags[name] == nil then
-		g_savedata.flags[name] = default_value
-	end
-end
-
---# Register an integer flag, can only be an integer.
----@param name string the name of the flag
----@param default_value integer the default_value for this flag
----@param tags table<integer, string> a table of tags for this flag, can be used to filter tags for displaying to the user.
----@param read_permission_requirement string the permission required to read this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
----@param write_permission_requirement string the permission required to write to this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
----@param function_to_execute function|nil the function to execute when this value is set. params are (in order): "value, old_value, peer_id", if you do not need to specify a function, just provide nil to avoid extra performance cost of calling an empty function.
----@param description string the description of the flag
----@param min integer|nil the minimum value for the flag (nil for none)
----@param max integer|nil the maximum value for the flag (nil for none)
-function Flag.registerIntegerFlag(name, default_value, tags, read_permission_requirement, write_permission_requirement, function_to_execute, description, min, max)
-	local function_name = "Flag.registerIntegerFlag"
-
-	-- if this flag has already been registered
-	if registered_flags[name] then
-		d.print(("(%s) Flag %s already exists!"):format(function_name, name), true, 1)
-		return
-	end
-
-	---@class IntegerFlag
-	local flag = {
-		name = name,
-		default_value = default_value,
-		tags = tags,
-		read_permission_requirement = read_permission_requirement,
-		write_permission_requirement = write_permission_requirement,
-		function_to_execute = function_to_execute,
-		flag_type = "integer",
-		limit = {
-			min = min,
-			max = max
-		}
-	}
-
-	registered_flags[name] = flag
-
-	if g_savedata.flags[name] == nil then
-		g_savedata.flags[name] = default_value
-	end
-end
-
---# Register an number flag, can only be an number.
----@param name string the name of the flag
----@param default_value number the default_value for this flag
----@param tags table<integer, string> a table of tags for this flag, can be used to filter tags for displaying to the user.
----@param read_permission_requirement string the permission required to read this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
----@param write_permission_requirement string the permission required to write to this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
----@param function_to_execute function|nil the function to execute when this value is set. params are (in order): "value, old_value, peer_id", if you do not need to specify a function, just provide nil to avoid extra performance cost of calling an empty function.
----@param description string the description of the flag
----@param min integer|nil the minimum value for the flag (nil for none)
----@param max integer|nil the maximum value for the flag (nil for none)
-function Flag.registerNumberFlag(name, default_value, tags, read_permission_requirement, write_permission_requirement, function_to_execute, description, min, max)
-	local function_name = "Flag.registerNumberFlag"
-
-	-- if this flag has already been registered
-	if registered_flags[name] then
-		d.print(("(%s) Flag %s already exists!"):format(function_name, name), true, 1)
-		return
-	end
-
-	---@class NumberFlag
-	local flag = {
-		name = name,
-		default_value = default_value,
-		tags = tags,
-		read_permission_requirement = read_permission_requirement,
-		write_permission_requirement = write_permission_requirement,
-		function_to_execute = function_to_execute,
-		flag_type = "number",
-		limit = {
-			min = min,
-			max = max
-		}
-	}
-
-	registered_flags[name] = flag
-
-	if g_savedata.flags[name] == nil then
-		g_savedata.flags[name] = default_value
-	end
-end
-
---# Register a string flag, can only be an string.
----@param name string the name of the flag
----@param default_value string the default_value for this flag
----@param tags table<integer, string> a table of tags for this flag, can be used to filter tags for displaying to the user.
----@param read_permission_requirement string the permission required to read this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
----@param write_permission_requirement string the permission required to write to this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
----@param function_to_execute function|nil the function to execute when this value is set. params are (in order): "value, old_value, peer_id", if you do not need to specify a function, just provide nil to avoid extra performance cost of calling an empty function.
----@param description string the description of the flag
-function Flag.registerStringFlag(name, default_value, tags, read_permission_requirement, write_permission_requirement, description, function_to_execute)
-	local function_name = "Flag.registerStringFlag"
-
-	-- if this flag has already been registered
-	if registered_flags[name] then
-		d.print(("(%s) Flag %s already exists!"):format(function_name, name), true, 1)
-		return
-	end
-
-	---@class StringFlag
-	local flag = {
-		name = name,
-		default_value = default_value,
-		tags = tags,
-		read_permission_requirement = read_permission_requirement,
-		write_permission_requirement = write_permission_requirement,
-		function_to_execute = function_to_execute,
-		flag_type = "string",
-	}
-
-	registered_flags[name] = flag
-
-	if g_savedata.flags[name] == nil then
-		g_savedata.flags[name] = default_value
-	end
-end
-
---# Register an any flag, can be any value.
----@param name string the name of the flag
----@param default_value any the default_value for this flag
----@param tags table<integer, string> a table of tags for this flag, can be used to filter tags for displaying to the user.
----@param read_permission_requirement string the permission required to read this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
----@param write_permission_requirement string the permission required to write to this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
----@param function_to_execute function|nil the function to execute when this value is set. params are (in order): "value, old_value, peer_id", if you do not need to specify a function, just provide nil to avoid extra performance cost of calling an empty function.
----@param description string the description of the flag
-function Flag.registerAnyFlag(name, default_value, tags, read_permission_requirement, write_permission_requirement, function_to_execute, description)
-	local function_name = "Flag.registerAnyFlag"
-
-	-- if this flag has already been registered
-	if registered_flags[name] then
-		d.print(("(%s) Flag %s already exists!"):format(function_name, name), true, 1)
-		return
-	end
-
-	---@class AnyFlag
-	local flag = {
-		name = name,
-		default_value = default_value,
-		tags = tags,
-		read_permission_requirement = read_permission_requirement,
-		write_permission_requirement = write_permission_requirement,
-		function_to_execute = function_to_execute,
-		flag_type = "any",
-		description = description
-	}
-
-	registered_flags[name] = flag
-
-	if g_savedata.flags[name] == nil then
-		g_savedata.flags[name] = default_value
-	end
-end
-
----@param full_message string the full_message of the player
----@param peer_id integer the peer_id of the player who executed the command
----@param is_admin boolean if the player has admin.
----@param is_auth boolean if the player is authed.
----@param command string the command the player entered
----@param arg table<integer, string> the arguments to the command the player entered.
-function Flag.onFlagCommand(full_message, peer_id, is_admin, is_auth, command, arg)
-	if command == "flag" then
-		local flag_name = arg[1]
-
-		if not flag_name then
-			d.print("You must specify a flag's name! get a list of flags via ?icm flags", false, 1, peer_id)
-			return
-		end
-
-		local flag = registered_flags[flag_name]
-
-		if not flag then
-			d.print(("The flag \"%s\" does not exist! Get a list of flags via ?icm flags"):format(flag_name), false, 1, peer_id)
-			return
-		end
-
-		-- the player is trying to read the flag
-		if not arg[2] then
-			-- check if the player has the permission to read the flag
-			
-			-- if the required read permission does not exist, default it to admin.
-
-			local read_permission = registered_permissions[flag.read_permission_requirement] or registered_permissions["admin"]
-
-			if not read_permission(peer_id) then
-				d.print(("You do not have permission to read this flag! You require the permission %s, contact a server admin/owner if you belive this is in mistake."):format(registered_permissions[flag.read_permission_requirement] and flag.read_permission_requirement or "admin"), false, 1, peer_id)
-				return
-			end
-
-			local flag_value = g_savedata.flags[flag_name]
-
-			if flag.flag_type ~= "string" and flag_value == "nil" then
-				flag_value = nil
-			end
-
-			-- if the flag's value is a string, format it as a string for display.
-			if type(flag_value) == "string" then
-				flag_value = ("\"%s\""):format(flag_value)
-			end
-
-			d.print(("%s's current value is: %s"):format(flag.name, flag_value), false, 0, peer_id)
-		else
-			-- the player is trying to set the flag
-
-			local write_permission = registered_permissions[flag.write_permission_requirement] or registered_permissions["admin"]
-
-			if not write_permission(peer_id) then
-				d.print(("You do not have permission to write this flag! You require the permission %s, contact a server admin/owner if you belive this is in mistake."):format(registered_permissions[flag.write_permission_requirement] and flag.write_permission_requirement or "admin"), false, 1, peer_id)
-				return
-			end
-
-			local set_value = table.concat(arg, " ", 2, #arg)
-			local original_set_value = set_value
-
-			if flag.flag_type ~= "string" then
-				if set_value == "nil" then
-					set_value = nil
-				end
-
-				-- number and integer flags
-				if flag.flag_type == "number" or flag.flag_type == "integer" then
-					-- convert to number if number, integer if integer
-					set_value = flag.flag_type == "number" and tonumber(set_value) or math.tointeger(set_value)
-
-					-- cannot be converted to number if number, or integer if integer.
-					if not set_value then
-						d.print(("%s is not a %s! The flag %s requires %s inputs only!"):format(original_set_value, flag.flag_type, flag.name, flag.flag_type), false, 1, peer_id)
-						return
-					end
-
-					-- check if outside of minimum
-					if flag.limit.min and set_value < flag.limit.min then
-						d.print(("The flag \"%s\" has a minimum value of %s, your input of %s is too low!"):format(flag.name, flag.limit.min, set_value), false, 1, peer_id)
-						return
-					end
-
-					-- check if outside of maximum
-					if flag.limit.max and set_value > flag.limit.max then
-						d.print(("The flag \"%s\" has a maximum value of %s, your input of %s is too high!"):format(flag.name, flag.limit.max, set_value), false, 1, peer_id)
-						return
-					end
-				end
-
-				-- boolean flags
-				if flag.flag_type == "boolean" then
-					set_value = string.toboolean(set_value)
-
-					if set_value == nil then
-						d.print(("The flag \"%s\" requires the input to be a boolean, %s is not a boolean!"):format(flag.name, original_set_value))
-					end
-				end
-
-				-- any flags
-				if flag.flag_type == "any" then
-
-					-- parse the value (turn it into the expected type)
-					set_value = string.parseValue(set_value)
-				end
-			end
-
-			local old_flag_value = g_savedata.flags[flag_name]
-
-			-- set the flag
-			g_savedata.flags[flag_name] = set_value
-
-			-- call the function for when the flag is written, if one is specified
-			if flag.function_to_execute ~= nil then
-				flag.function_to_execute(set_value, old_flag_value, peer_id)
-			end
-
-			d.print(("Successfully set the value for the flag \"%s\" to %s"):format(flag.name, set_value), false, 0, peer_id)
-		end
-	elseif command == "flags" then
-		if arg[1] then
-			d.print("Does not yet support the ability to search for flags, only able to give a full list for now, sorry!", false, 0, peer_id)
-			return
-		end
-
-		d.print("\n-- Flags --", false, 0, peer_id)
-
-		--TODO: make it sort by tags and filter by tags.
-
-		local flag_list = {}
-
-		-- clones, as we will be modifying them and sorting them for display purposes, and we don't want to modify the actual flags.
-		local cloned_registered_flags = table.copy.deep(registered_flags)
-		for _, flag in pairs(cloned_registered_flags) do
-			table.insert(flag_list, flag)
-		end
-
-		-- sort the list for display purposes
-		table.sort(flag_list, function(a, b)
-			-- if the types are the same, then sort alphabetically by name
-			if a.flag_type == b.flag_type then
-				return a.name < b.name
-			end
-		
-			-- the types are different, sort alphabetically by type.
-			return a.flag_type < b.flag_type
-		end)
-
-		local last_type = "none"
-
-		for flag_index = 1, #flag_list do
-			local flag = flag_list[flag_index]
-
-			-- print the following flag category, if this is now printing a new category of flags
-			if last_type ~= flag.flag_type then
-				d.print(("\n--- %s Flags ---"):format(flag.flag_type:upperFirst()), false, 0, peer_id)
-				last_type = flag.flag_type
-			end
-
-			-- print the flag data
-			d.print(("-----\nName: %s\nValue: %s\nTags: %s"):format(flag.name, g_savedata.flags[flag.name], table.concat(flag.tags, ", ")), false, 0, peer_id)
-		end
-	end
-end
-
 --[[
 
-	Register Default Permissions
+	Registers the default command permissions.
 
 ]]
 
 -- None Permission
-Flag.registerPermission(
+Command.registerPermission(
 	"none",
 	function()
 		return true
@@ -818,9 +1151,13 @@ Flag.registerPermission(
 )
 
 -- Auth Permission
-Flag.registerPermission(
+Command.registerPermission(
 	"auth",
 	function(peer_id)
+
+		-- this is a script, skip check.
+		if peer_id == -1 then return false end
+
 		local players = server.getPlayers()
 
 		for peer_index = 1, #players do
@@ -836,9 +1173,13 @@ Flag.registerPermission(
 )
 
 -- Admin Permission
-Flag.registerPermission(
+Command.registerPermission(
 	"admin",
 	function(peer_id)
+
+		-- this is a script, skip check.
+		if peer_id == -1 then return false end
+
 		local players = server.getPlayers()
 
 		for peer_index = 1, #players do
@@ -853,7 +1194,433 @@ Flag.registerPermission(
 	end
 )
 
--- required libraries (put at bottom to ensure the Flag variable and functions are created before them, but they're still required.)
+-- Script Permission
+Command.registerPermission(
+	"script",
+	function(peer_id)
+		return peer_id == -1
+	end
+)
+
+-- Auth Script Permission
+Command.registerPermission(
+	"auth_script",
+	function(peer_id)
+
+		-- this is a script, skip check.
+		if peer_id == -1 then return true end
+
+		local players = server.getPlayers()
+
+		for peer_index = 1, #players do
+			local player = players[peer_index]
+
+			if player.id == peer_id then
+				return player.auth
+			end
+		end
+
+		return false
+	end
+)
+
+-- Admin Script Permission
+Command.registerPermission(
+	"admin_script",
+	function(peer_id)
+
+		-- this is a script, skip check.
+		if peer_id == -1 then return true end
+
+		local players = server.getPlayers()
+
+		for peer_index = 1, #players do
+			local player = players[peer_index]
+
+			if player.id == peer_id then
+				return player.admin
+			end
+		end
+
+		return false
+	end
+)
+--[[
+	
+Copyright 2025 Liam Matthews
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+]]
+
+--[[
+
+	Containts the includes for the default command modules.
+
+]]
+
+-- Adds the generic commands, eg: "info"
+--[[
+	
+Copyright 2025 Liam Matthews
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+]]
+
+-- Library Version 0.0.1
+
+--[[
+
+
+	Library Setup
+
+
+]]
+
+-- required libraries
+
+---@diagnostic disable:duplicate-doc-field
+---@diagnostic disable:duplicate-doc-alias
+---@diagnostic disable:duplicate-set-field
+
+--[[
+
+	Registers the default generic commands.
+
+]]
+
+player_commands = {
+	normal = {
+		info = {
+			short_desc = "prints info about the mod",
+			desc = "prints some info about the mod in chat! including version, world creation version, times reloaded, ect. Really helpful if you attach the commands output in bug reports!",
+			args = "none",
+			example = "?impwep info",
+		},
+		help = {
+			short_desc = "shows a list of all of the commands",
+			desc = "shows a list of all of the commands, to learn more about a command, type to commands name after \"help\" to learn more about it",
+			args = "[command]",
+			example = "?impwep help info",
+		},
+		flag = {
+			short_desc = "allows you to set flags or get their value.",
+			desc = "allows you to set flags or get their value, which are a more advanced type of setting, which can control things like toggling features, changing behaviours, and just general debug",
+			args = "<flag_name> <value>",
+			example = "?icm flag sync_tick_rate false, ?icm flag sync_tick_rate"
+		},
+		flags = {
+			short_desc = "allows you to get a list of flags",
+			desc = "allows you to get a list of flags, which are a more advanced type of setting, which can control things like toggling features, changing behaviours, and just general debug",
+			args = "<flag_name> [tag]",
+			example = "?icm flags, ?icm flags feature"
+		}
+	},
+	admin = {
+		reset = {
+			short_desc = "reset's the ai's commands",
+			desc = "this resets the ai's commands, this is helpful for testing and debugging mostly",
+			args = "none",
+			example = "?impwep reset",
+		},
+		speed = {
+			short_desc = "lets you change ai's pseudo speed",
+			desc = "this allows you to change the multiplier of the ai's pseudo speed, with the arg being the amount to times it by",
+			args = "(multiplier)",
+			example = "?impwep pseudo_speed 5",
+		},
+		vreset = {
+			short_desc = "lets you reset an ai's state",
+			desc = "this lets you reset an ai vehicle's state, such as holding, stationary, ect",
+			args = "(vehicle_id)",
+			example = "?impwep vreset 655",
+		},
+		target = {
+			short_desc = "lets you change the ai's target",
+			desc = "this lets you change what the ai is targeting, so they will attack it instead",
+			args = "(vehicle_id)",
+			example = "?impwep target 500",
+		},
+		spawn_vehicle = { -- spawn vehicle
+			short_desc = "lets you spawn in an ai vehicle",
+			desc = "this lets you spawn in a ai vehicle, if you dont specify one, it will spawn a random ai vehicle, and if you specify \"scout\", it will spawn a scout vehicle if it can spawn. specify x and y to spawn it at a certain location, or \"near\" and then a minimum distance and then a maximum distance",
+			args = "[vehicle_id|vehicle_type|\"scout\"] [x & y|\"near\" & min_range & max_range] ",
+			example = "?impwep sv Eurofighter\n?impwep sv Eurofighter -500 500\n?impwep sv Eurofighter near 1000 5000\n?impwep sv heli",
+		},
+		vehicle_list = { -- vehicle list
+			short_desc = "prints a list of all vehicles",
+			desc = " prints a list of all of the AI vehicles in the addon, also shows their formatted name, which is used in commands",
+			args = "none",
+		},
+		debug = {
+			short_desc = "enables or disables debug mode",
+			desc = "lets you toggle debug mode, also shows all the AI vehicles on the map with tons of info valid debug types: \"all\", \"chat\", \"profiler\" and \"map\"",
+			args = "(debug_type) [peer_id]",
+		},
+		spawnturret = { -- spawn turret
+			short_desc = "spawns a turret at every enemy AI island",
+			desc = "spawns a turret at every enemy AI island",
+			args = "none",
+		},
+		capturepoint = { -- capture point
+			short_desc = "allows you to change who owns a point",
+			desc = "allows you to change who owns a specific island",
+			args = "(island_name) (\"ai\"|\"neutral\"|\"player\")",
+		},
+		aimod = {
+			short_desc = "lets you get an ai's spawning modifier",
+			desc = "lets you see what an ai's role, type, strategy or vehicle's spawning modifier is",
+			args = "(role) [type] [strategy] [constructable_vehicle_id]",
+		},
+		setmod = {
+			short_desc = "lets you change an ai's spawning modifier",
+			desc = "lets you change what the ai's role spawning modifier is, does not yet support type, strategy or constructable vehicle id",
+			args = "(\"reward\"|\"punish\") (role) (modifier: 1-5)",
+			example = "?impwep setmod reward attack 4"
+		},
+		delete_vehicle = { -- delete vehicle
+			short_desc = "lets you delete an ai vehicle",
+			desc = "lets you delete an ai vehicle by vehicle id, or all by specifying \"all\", or all vehicles that have been damaged by specifying \"damaged\"",
+			args = "(vehicle_id|\"all\"|\"damaged\")",
+		},
+		teleport = { -- teleport vehicle
+			short_desc = "lets you teleport an ai vehicle",
+			desc = "lets you teleport an ai vehicle by vehicle id, to the specified x, y and z",
+			args = "(vehicle_id) (x) (y) (z)",
+		},
+		scoutintel = { -- set scout intel
+			short_desc = "lets you set the ai's scout level",
+			desc = "lets you set the ai's scout level on a specific island, from 0 to 100 for 0% scouted to 100% scouted",
+			args = "(island_name) (0-100)",
+		},
+		setting = {
+			short_desc = "lets you change or get a specific setting and can get a list of all settings",
+			desc = "if you do not input the setting name, it will show a list of all valid settings, if you input a setting name but not a value, it will tell you the setting's current value, if you enter both the setting name and the setting value, it will change that setting to that value",
+			args = "[setting_name] [value]",
+		},
+		ai_knowledge = {
+			short_desc = "shows the 3 vehicles it thinks is good against you",
+			desc = "shows the 3 vehicles it thinks is good against you, and the 3 that it thinks is weak against you",
+			args = "none",
+		},
+		reset_cargo = {
+			short_desc = "resets the ai's cargo storages",
+			desc = "resets the all island cargo storages to 0 for each resource, leave island blank for all islands, leave cargo_type blank for all resources",
+			args = "[island] [cargo_type]",
+		},
+		queueconvoy = {
+			short_desc = "queues a convoy.",
+			desc = "queues a convoy to be sent out, will be sent out once theres not any convoys.",
+			args = "",
+		},
+		airvehicleskamikaze = {
+			short_desc = "kamikaze.",
+			desc = "forces all air vehicles to have their target coordinates set to the target's position, when they have a target.",
+			args = "",
+		},
+		getmemusage = {
+			short_desc = "returns memory usage of this addon",
+			desc = "returns how much memory the lua environment is using, this requires a modified version of sw which has the base lua functions injected.",
+			args = "",
+		},
+		causeerror = {
+			short_desc = "causes an error when the specified function is called.",
+			desc = "causes an error when the specified function is called. Useful for debugging the traceback debug, or trying to reproduce an error.",
+			args = "<function_name>",
+		},
+		printtraceback = {
+			short_desc = "",
+			desc = "",
+			args = "",
+		},
+		execute = {
+			short_desc = "allows you to get, set or call global variables.",
+			desc = "allows you to get or set global variables, and call global functions with specified arguments.",
+			args = "(address)[(\"(\"function_args\")\") value]",
+		},
+		ignite = {
+			short_desc = "allows you to ignite an ai vehicle",
+			desc = "allows you to ignite one or many ai vehicles by spawning a fire on them.",
+			args = "(vehicle_id)|\"all\" [size]",
+		}
+	},
+	host = {}
+}
+
+-- Info command
+Command.registerCommand(
+	"info",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		d.print("------ Improved Conquest Mode Info ------", false, 0, peer_id)
+		d.print("Version: "..ADDON_VERSION, false, 0, peer_id)
+		if not g_savedata.info.addons.ai_paths then
+			d.print("AI Paths Disabled (will cause ship pathfinding issues)", false, 1, peer_id)
+		end
+
+		local version_name, is_success = comp.getVersion(1)
+		if not is_success then
+			d.print("(command info) failed to get creation version", false, 1)
+			return
+		end
+
+		local version_data, is_success = comp.getVersionData(version_name)
+		if not is_success then
+			d.print("(command info) failed to get version data of creation version", false, 1)
+			return
+		end
+		d.print("World Creation Version: "..version_data.data_version, false, 0, peer_id)
+		d.print("Times Addon Data has been Updated: "..tostring(#g_savedata.info.version_history and #g_savedata.info.version_history - 1 or 0), false, 0, peer_id)
+		if g_savedata.info.version_history and #g_savedata.info.version_history ~= nil and #g_savedata.info.version_history ~= 0 then
+			d.print("Version History", false, 0, peer_id)
+			for i = 1, #g_savedata.info.version_history do
+				local has_backup = g_savedata.info.version_history[i].backup_g_savedata
+				d.print(i..": "..tostring(g_savedata.info.version_history[i].version), false, 0, peer_id)
+			end
+		end
+
+	end,
+	"none",
+	"Prints some info about the mod in chat! including version, world creation version, times reloaded, ect. Really helpful if you attach the commands output in bug reports!",
+	"Prints some addon info.",
+	{""}
+)
+
+-- Help command
+Command.registerCommand(
+	"help",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		-- Get the command that the user wants help for
+		local command_name = arg[1]
+
+		-- Define the help reply message
+		local help_reply_message = ""
+
+		---@param command Command the command to add to the help menu
+		---@param detailed boolean whether or not if the help should be detailed for this command
+		---@return string command_help_string the help message for this command
+		local function getCommandHelp(command, detailed)
+			-- Create the string, starting off with the command's name.
+			local command_help_string = "?icm " .. command.name .. " " .. command.args
+
+			-- If the help shouldn't be detailed.
+			if not detailed then
+				-- Add the short description to the string on the same line.
+				command_help_string = ("%s - %s"):format(command_help_string, command.short_description)
+			-- If the help should be detailed.
+			else
+				-- Add the full description to the string on the next line.
+				command_help_string = ("%s\nDescription: %s"):format(command_help_string, command.description)
+
+				-- Add the examples to the string
+				if command.examples and #command.examples > 0 then
+					command_help_string = command_help_string .. "\nExamples:"
+					for example_index = 1, #command.examples do
+						command_help_string = command_help_string .. "\n?icm "..command.name.." "..command.examples[example_index]
+					end
+				end
+			end
+
+			return command_help_string
+		end
+
+		-- If the user didn't specify a command, then print all of the commands
+		if not command_name then
+			-- Go through all of the prefixes
+			for prefix, commands in pairs(commands) do
+				-- Go through all of the commands
+				for command_name, command in pairs(commands) do
+					-- Get it's help message, and add it to the list
+					help_reply_message = ("%s\n-----------------------\n%s"):format(help_reply_message, getCommandHelp(command, false))
+				end
+			end
+		else
+			--Find the correct command
+			local foundCommand = nil
+			for prefix, commands in pairs(commands) do
+				if commands[command_name] then
+					foundCommand = commands[command_name]
+					break
+				end
+			end
+			if foundCommand then
+				help_reply_message = getCommandHelp(foundCommand, true)
+			else
+				help_reply_message = "Command \""..tostring(command_name).."\" not found!"
+			end
+		end
+
+		-- Print the help message
+		d.print(help_reply_message, false, 0, peer_id)
+	end,
+	"none",
+	"Prints some info about the addon, such as it's version",
+	"Prints some general addon info.",
+	{
+		"",
+		"info"
+	},
+	"[command]"
+)
+
+
+-- Adds the variable interaction commands, eg: "print_variable", "set_variable"
+--[[
+	
+Copyright 2025 Liam Matthews
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+]]
+
+-- Library Version 0.0.1
+
+--[[
+
+
+	Library Setup
+
+
+]]
+
+-- required libraries
+-- required libraries
 -- required libraries
 --[[
 
@@ -914,10 +1681,13 @@ replies_awaiting = {}
 ---@param count integer? the number of times the function can be executed, -1 for infinite (default 1)
 ---@param timeout number? the time in seconds before the function expires, -1 for infinite (default -1)
 function AddonCommunication.executeOnReply(short_addon_name, message, port, execute_function, count, timeout)
+	short_addon_name = short_addon_name or SHORT_ADDON_NAME-- default to this addon's short name
 	if not message then
 		d.print("(AddonCommunication.executeOnReply) message was left blank!", true, 1)
 		return
 	end
+
+	port = port or 0
 
 	if not execute_function then
 		d.print("(AddonCommunication.executeOnReply) execute_function was left blank!", true, 1)
@@ -1022,7 +1792,7 @@ end
 
 
 	Variables
-   
+
 
 ]]
 
@@ -1104,6 +1874,8 @@ function math.seededRandom(use_decimals, seed, min, max)
 	-- return the seeded number
 	return seeded_number
 end
+
+
 
 ---@param x number the number to wrap
 ---@param min number the minimum number to wrap around
@@ -1205,6 +1977,72 @@ function math.xor(...)
 	return tc%2==1
 end
 
+--- Linear Scale, converts one scale to another scale <br>
+--- For example, if x is x_min, then it will output y_min <br>
+--- and if x is x_max, then it will output y_max <br>
+--- And anywhere inbetween, it will output between the y_min and y_max.
+---@param x number the value from the original scale
+---@param x_min number the minimum value for x scale
+---@param x_max number the maximum value for the x scale
+---@param y_min number the value to output from the y scale if x is x_min
+---@param y_max number the value to output from the y scale if x is x_max
+---@return number y the value from the y scale
+function math.linearScale(x, x_min, x_max, y_min, y_max)
+	--[[
+		Get the scaled x
+		for example, if x is 0, x_min is -5, and x_max is 5, then scaled x is 0.5
+	]]
+	local scaled_x = (x - x_min)/(x_max - x_min)
+
+	--[[
+		return the scaled y
+		if scaled_x is 0.5, y_min is 10, and y_max is -10, then scaled_y is 0.
+	]]
+	return (1-scaled_x)*y_min+scaled_x*y_max
+end
+
+--- Quadratic Bezier interpolation between 3 points.
+---@param last number the previous point
+---@param new number the new target point
+---@param p1 number the control point
+---@param progress number the progress between 0 and 1
+---@return number point the point between last and new
+function math.quadraticBezier(last, new, p1, progress)
+	-- calculate the inverse of the progress
+	local inverse_progress = 1-progress
+
+	-- calculate the progress squared
+	local progress_squared = progress*progress
+
+	-- calculate the inverse progress squared
+	local inverse_progress_squared = inverse_progress*inverse_progress
+
+	-- calculate and return the point.
+	return inverse_progress_squared * last + 2 * inverse_progress * progress * p1 + progress_squared * new
+end
+
+--- Function for rounding a number.
+---@param x number the number to round.
+---@param decimal_places number|nil the number of decimal places to round to.
+---@return number rounded_x the rounded number.
+function math.round(x, decimal_places)
+	-- Default the number of decimal places to 0 if unspecified.
+	decimal_places = decimal_places or 0
+
+	-- Multiply the number by 10^places, this gives us the number to multiply and divide by to preserve the desired number of decimal places.
+	local decimal_multplier = 10^decimal_places
+
+	-- If this is a positive number, use floor and + 0.5
+	if x >= 0 then
+		-- Round with the number of places. (positive numbers)
+		return math.floor(x * decimal_multplier + 0.5) / decimal_multplier
+	-- Otherwise, we need to use ceil and -0.5, otherwise, something like -0.5 rounds to 0, instead of -1.
+	else
+		-- Round with the number of places. (negative numbers)
+		return math.ceil(x * decimal_multplier - 0.5) / decimal_multplier
+	end
+end
+
 
 ---@param matrix1 SWMatrix the first matrix
 ---@param matrix2 SWMatrix the second matrix
@@ -1219,7 +2057,7 @@ end
 ---@return number z_axis the z_axis rotation (pitch)
 function matrix.getMatrixRotation(rot_matrix) --returns radians for the functions: matrix.rotation X and Y and Z (credit to woe and quale)
 	local z = -math.atan(rot_matrix[5],rot_matrix[1])
-	rot_matrix = m.multiply(rot_matrix, m.rotationZ(-z))
+	rot_matrix = matrix.multiply(rot_matrix, matrix.rotationZ(-z))
 	return math.atan(rot_matrix[7],rot_matrix[6]), math.atan(rot_matrix[9],rot_matrix[11]), z
 end
 
@@ -1250,10 +2088,81 @@ end
 ---@param matrix3 SWMatrix the third most recent matrix
 ---@return number acceleration the acceleration in m/s
 function matrix.acceleration(matrix1, matrix2, matrix3, ticks_between)
-	local v1 = m.velocity(matrix1, matrix2, ticks_between) -- last change in velocity
-	local v2 = m.velocity(matrix2, matrix3, ticks_between) -- change in velocity from ticks_between ago
+	local v1 = matrix.velocity(matrix1, matrix2, ticks_between) -- last change in velocity
+	local v2 = matrix.velocity(matrix2, matrix3, ticks_between) -- change in velocity from ticks_between ago
 	-- returns the acceleration
 	return (v1-v2)/(ticks_between/60)
+end
+
+function matrix.clone(matrix_to_clone)
+	return {
+		matrix_to_clone[1],
+		matrix_to_clone[2],
+		matrix_to_clone[3],
+		matrix_to_clone[4],
+		matrix_to_clone[5],
+		matrix_to_clone[6],
+		matrix_to_clone[7],
+		matrix_to_clone[8],
+		matrix_to_clone[9],
+		matrix_to_clone[10],
+		matrix_to_clone[11],
+		matrix_to_clone[12],
+		matrix_to_clone[13],
+		matrix_to_clone[14],
+		matrix_to_clone[15],
+		matrix_to_clone[16]
+	}
+end
+
+--- Returns true if the two matrixes match on all params.
+---@param m1 SWMatrix the first matrix
+---@param m2 SWMatrix the second matrix
+---@return boolean is_equal true if the matrixes are equal
+function matrix.equals(m1, m2)
+	return
+		m1[1] == m2[1] and
+		m1[2] == m2[2] and
+		m1[3] == m2[3] and
+		m1[4] == m2[4] and
+		m1[5] == m2[5] and
+		m1[6] == m2[6] and
+		m1[7] == m2[7] and
+		m1[8] == m2[8] and
+		m1[9] == m2[9] and
+		m1[10] == m2[10] and
+		m1[11] == m2[11] and
+		m1[12] == m2[12] and
+		m1[13] == m2[13] and
+		m1[14] == m2[14] and
+		m1[15] == m2[15] and
+		m1[16] == m2[16]
+end
+
+--- Returns true if the two matrixes match on all params. Meant to be used when it's been stored in g_savedata, as this will remove to the last decimal point. on [13], [14], and [15]
+---@param m1 SWMatrix the first matrix
+---@param m2 SWMatrix the second matrix
+---@return boolean is_equal true if the matrixes are equal
+function matrix.g_equals(m1, m2)
+	-- Most params are just ==, but for 13, 14, and 15, we want to remove to the last decimal for comparison, due to the strange compression/randomisation on the location params.
+	return
+		m1[1] == m2[1] and
+		m1[2] == m2[2] and
+		m1[3] == m2[3] and
+		m1[4] == m2[4] and
+		m1[5] == m2[5] and
+		m1[6] == m2[6] and
+		m1[7] == m2[7] and
+		m1[8] == m2[8] and
+		m1[9] == m2[9] and
+		m1[10] == m2[10] and
+		m1[11] == m2[11] and
+		m1[12] == m2[12] and
+		math.round(m1[13], 0) == math.round(m2[13], 0) and
+		math.round(m1[14], 0) == math.round(m2[14], 0) and
+		math.round(m1[15], 0) == math.round(m2[15], 0) and
+		m1[16] == m2[16]
+		
 end
 
 
@@ -1922,739 +2831,492 @@ function Map.addMapCircle(peer_id, ui_id, center_matrix, radius, width, r, g, b,
 		last_angle = new_angle
 	end
 end
----@param str string the string to make the first letter uppercase
----@return string|nil str the string with the first letter uppercase
-function string.upperFirst(str)
-	if type(str) == "string" then
-		return (str:gsub("^%l", string.upper))
-	end
-	return nil
-end
-
---- @param str string the string the make friendly
---- @param remove_spaces boolean? true for if you want to remove spaces, will also remove all underscores instead of replacing them with spaces
---- @param keep_caps boolean? if you want to keep the caps of the name, false will make all letters lowercase
---- @return string|nil friendly_string friendly string, nil if input_string was not a string
-function string.friendly(str, remove_spaces, keep_caps) -- function that replaced underscores with spaces and makes it all lower case, useful for player commands so its not extremely picky
-
-	if not str or type(str) ~= "string" then
-		d.print("(string.friendly) str is not a string! type: "..tostring(type(str)).." provided str: "..tostring(str), true, 1)
-		return nil
-	end
-
-	-- make all lowercase
+--[[
 	
-	local friendly_string = not keep_caps and string.lower(str) or str
+Copyright 2025 Liam Matthews
 
-	-- replace all underscores with spaces
-	friendly_string = string.gsub(friendly_string, "_", " ")
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-	-- if remove_spaces is true, remove all spaces
-	if remove_spaces then
-		friendly_string = string.gsub(friendly_string, " ", "")
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+]]
+
+--[[ 
+	Flag command, used to manage more advanced settings.
+	Compliments the settings command, setting command is made to handle less
+	complex commands, and ones that should be set on the world's creation.
+	While flags are ones that may be set for compatiblity reasons, such as if
+	it adding currency rewards is incompatible with another addon on a server,
+	the economy module could be disabled via a flag.
+]]
+
+-- required libraries -- required to print messages -- required to get data on players -- required for some of its helpful string functions -- required for some of its helpful table functions
+
+g_savedata.flags = {}
+
+-- where all of the registered flags are stored, their current values get stored in g_savedata.flags instead, though.
+---@type table<string, BooleanFlag | IntegerFlag | NumberFlag | StringFlag | AnyFlag>
+local registered_flags = {}
+
+
+-- where all of the registered permissions are stored.
+local registered_permissions = {}
+
+-- stores the functions for flags
+Flag = {}
+
+---@param name string the name of this permission
+---@param has_permission function the function to execute, to check if the player has permission (arg1 is peer_id)
+function Flag.registerPermission(name, has_permission)
+
+	-- if the permission already exists
+	if registered_permissions[name] then
+
+		--[[
+			this can be quite a bad error, so it bypasses debug being disabled.
+
+			for example, library A adds a permission called "mod", for mod authors
+			and then after, library B adds a permission called "mod", for moderators of the server
+			
+			when this fails, any commands library B will now just require the requirements for mod authors
+			now you've got issues of mod authors being able to access moderator commands
+
+			so having this always alert is to try to make this issue obvious. as if it was just silent in
+			the background, suddenly you've got privilage elevation.
+		]]
+		d.print(("(Flag.registerPermission) Permission level %s is already registered!"):format(name), false, 1)
+		return
 	end
 
-	return friendly_string
+	registered_permissions[name] = has_permission
 end
 
----@param vehicle_name string the name you want to remove the prefix of
----@param keep_caps boolean? if you want to keep the caps of the name, false will make all letters lowercase
----@return string vehicle_name the vehicle name without its vehicle type prefix
-function string.removePrefix(vehicle_name, keep_caps)
+--# Register a boolean flag, can only be true or false.
+---@param name string the name of the flag
+---@param default_value boolean the default_value for this flag
+---@param tags table<integer, string> a table of tags for this flag, can be used to filter tags for displaying to the user.
+---@param read_permission_requirement string the permission required to read this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
+---@param write_permission_requirement string the permission required to write to this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
+---@param function_to_execute function|nil the function to execute when this value is set. params are (in order): "value, old_value, peer_id", if you do not need to specify a function, just provide nil to avoid extra performance cost of calling an empty function.
+---@param description string the description of the flag
+function Flag.registerBooleanFlag(name, default_value, tags, read_permission_requirement, write_permission_requirement, function_to_execute, description)
+	local function_name = "Flag.registerBooleanFlag"
 
-	if not vehicle_name then
-		d.print("(string.removePrefix) vehicle_name is nil!", true, 1)
-		return vehicle_name
+	-- if this flag has already been registered
+	if registered_flags[name] then
+		d.print(("(%s) Flag %s already exists!"):format(function_name, name), true, 1)
+		return
 	end
 
-	local vehicle_type_prefixes = {
-		"BOAT %- ",
-		"HELI %- ",
-		"LAND %- ",
-		"TURRET %- ",
-		"PLANE %- "
+	---@class BooleanFlag
+	local flag = {
+		name = name,
+		default_value = default_value,
+		tags = tags,
+		read_permission_requirement = read_permission_requirement,
+		write_permission_requirement = write_permission_requirement,
+		function_to_execute = function_to_execute,
+		flag_type = "boolean"
 	}
 
-	-- replaces underscores with spaces
-	local vehicle_name = string.gsub(vehicle_name, "_", " ")
+	registered_flags[name] = flag
 
-	-- remove the vehicle type prefix from the entered vehicle name
-	for _, prefix in ipairs(vehicle_type_prefixes) do
-		vehicle_name = string.gsub(vehicle_name, prefix, "")
+	if g_savedata.flags[name] == nil then
+		g_savedata.flags[name] = default_value
 	end
-
-	-- makes the string friendly
-	vehicle_name = string.friendly(vehicle_name, false, keep_caps)
-
-	if not vehicle_name then
-		d.print("(string.removePrefix) string.friendly() failed, and now vehicle_name is nil!", true, 1)
-		return ""
-	end
-
-	return vehicle_name
 end
 
---- Returns a string in a format that looks like how the table would be written.
----@param t table the table you want to turn into a string
----@return string str the table but in string form.
-function string.fromTable(t)
+--# Register an integer flag, can only be an integer.
+---@param name string the name of the flag
+---@param default_value integer the default_value for this flag
+---@param tags table<integer, string> a table of tags for this flag, can be used to filter tags for displaying to the user.
+---@param read_permission_requirement string the permission required to read this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
+---@param write_permission_requirement string the permission required to write to this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
+---@param function_to_execute function|nil the function to execute when this value is set. params are (in order): "value, old_value, peer_id", if you do not need to specify a function, just provide nil to avoid extra performance cost of calling an empty function.
+---@param description string the description of the flag
+---@param min integer|nil the minimum value for the flag (nil for none)
+---@param max integer|nil the maximum value for the flag (nil for none)
+function Flag.registerIntegerFlag(name, default_value, tags, read_permission_requirement, write_permission_requirement, function_to_execute, description, min, max)
+	local function_name = "Flag.registerIntegerFlag"
 
-	if type(t) ~= "table" then
-		d.print(("(string.fromTable) t is not a table! type of t: %s t: %s"):format(type(t), t), true, 1)
+	-- if this flag has already been registered
+	if registered_flags[name] then
+		d.print(("(%s) Flag %s already exists!"):format(function_name, name), true, 1)
+		return
 	end
 
-	local function tableToString(T, S, ind)
-		S = S or "{"
-		ind = ind or "  "
-
-		local table_length = table.length(T)
-		local table_counter = 0
-
-		for index, value in pairs(T) do
-
-			table_counter = table_counter + 1
-			if type(index) == "number" then
-				S = ("%s\n%s[%s] = "):format(S, ind, tostring(index))
-			elseif type(index) == "string" and tonumber(index) and math.isWhole(tonumber(index)) then
-				S = ("%s\n%s\"%s\" = "):format(S, ind, index)
-			else
-				S = ("%s\n%s%s = "):format(S, ind, tostring(index))
-			end
-
-			if type(value) == "table" then
-				S = ("%s{"):format(S)
-				S = tableToString(value, S, ind.."  ")
-			elseif type(value) == "string" then
-				S = ("%s\"%s\""):format(S, tostring(value))
-			else
-				S = ("%s%s"):format(S, tostring(value))
-			end
-
-			S = ("%s%s"):format(S, table_counter == table_length and "" or ",")
-		end
-
-		S = ("%s\n%s}"):format(S, string.gsub(ind, "  ", "", 1))
-
-		return S
-	end
-
-	return tableToString(t)
-end
-
---- returns the number of instances of that character in the string
----@param str string the string we are wanting to check
----@param char any the character(s) we are wanting to count for in str, note that this is as a lua pattern
----@return number count the number of instances of char, if there was an error, count will be 0, and is_success will be false
----@return boolean is_success if we successfully got the number of instances of the character
-function string.countCharInstances(str, char)
-
-	if type(str) ~= "string" then
-		d.print(("(string.countCharInstances) str is not a string! type of str: %s str: %s"):format(type(str), str), true, 1)
-		return 0, false
-	end
-
-	char = tostring(char)
-
-	local _, count = string.gsub(str, char, "")
-
-	return count, true
-end
-
---- Turns a string into a boolean, returns nil if not possible.
----@param val any the value we want to turn into a boolean
----@return boolean|nil bool the string turned into a boolean, is nil if string is not able to be turned into a boolean
-function string.toboolean(val)
-
-	local val_type = type(val)
-	
-	if val_type == "boolean" then
-		-- early out for booleans
-		return val
-	elseif val_type ~= "string" then
-		-- non strings cannot be "true" or "false", so will never return a boolean, so just early out.
-		return nil
-	end
-
-	local str = string.lower(val)
-
-	-- not convertable, return nil
-	if str ~= "true" and str ~= "false" then
-		return nil
-	end
-
-	-- convert
-	return str == "true"
-end
-
---- Turns a value from a string into its proper value, eg: "true" becomes a boolean of true, and ""true"" becomes a string of "true"
----@param val any the value to convert
----@return any parsed_value the converted value
-function string.parseValue(val)
-	local val_type = type(val)
-
-	-- early out (no need to convert)
-	if val_type ~= "string" then
-		return val
-	end
-
-	-- value as an integer
-	local val_int = math.tointeger(val)
-	if val_int then return val_int end
-
-	-- value as a number
-	local val_num = tonumber(val)
-	if val_num then return val_num end
-
-	-- value as a boolean
-	local val_bool = string.toboolean(val)
-	if val_bool ~= nil then return val_bool end
-
-	-- value as a table
-	if val:sub(1, 1) == "{" then
-		local val_tab = table.fromString(val)
-
-		if val_tab then return val_tab end
-	end
-
-	--[[
-		assume its a string
-	]]
-
-	-- if it has a " at the start, remove it
-	if val:sub(1, 1) == "\"" then
-		val = val:sub(2, val:len())
-	end
-
-	-- if it has a " at the end, remove it
-	local val_len = val:len()
-	if val:sub(val_len, val_len) == "\"" then
-		val = val:sub(1, val_len - 1)
-	end
-
-	-- return the string
-	return val
-end
-
--- variables for if you want to account for leap years or not.
-local days_in_a_year = 365.25
-local days_per_month = days_in_a_year/12
-
----@class timeFormatUnit -- how to format each unit, use ${plural} to have an s be added if the number is plural.
----@field prefix string the string before the number
----@field suffix string the string after the number
-
----@alias timeFormatUnits
----| '"millisecond"'
----| '"second"'
----| '"minute"'
----| '"hour"'
----| '"day"'
----| '"week"'
----| '"month"'
----| '"year"'
-
----@class timeFormat
----@field show_zeros boolean if zeros should be shown, if true, units with a value of 0 will be removed.
----@field time_zero_string string the string to show if the time specified is 0
----@field seperator string the seperator to be put inbetween each unit.
----@field final_seperator string the seperator to put for the space inbetween the last units in the list
----@field largest_first boolean if it should be sorted so the string has the highest unit be put first, set false to have the lowest unit be first.
----@field units table<timeFormatUnits, timeFormatUnit>
-
-time_formats = {
-	yMwdhmsMS = {
-		show_zeros = false,
-		time_zero_string = "less than 1 millisecond",
-		seperator = ", ",
-		final_seperator = ", and ",
-		largest_first = true,
-		units = {
-			millisecond = {
-				prefix = "",
-				suffix = " millisecond${plural}"
-			},
-			second = {
-				prefix = "",
-				suffix = " second${plural}"
-			},
-			minute = {
-				prefix = "",
-				suffix = " minute${plural}"
-			},
-			hour = {
-				prefix = "",
-				suffix = " hour${plural}"
-			},
-			day = {
-				prefix = "",
-				suffix = " day${plural}"
-			},
-			week = {
-				prefix = "",
-				suffix = " week${plural}"
-			},
-			month = {
-				prefix = "",
-				suffix = " month${plural}"
-			},
-			year = {
-				prefix = "",
-				suffix = " year${plural}"
-			}
-		}
-	},
-	yMdhms = {
-		show_zeros = false,
-		time_zero_string = "less than 1 second",
-		seperator = ", ",
-		final_seperator = ", and ",
-		largest_first = true,
-		units = {
-			second = {
-				prefix = "",
-				suffix = " second${plural}"
-			},
-			minute = {
-				prefix = "",
-				suffix = " minute${plural}"
-			},
-			hour = {
-				prefix = "",
-				suffix = " hour${plural}"
-			},
-			day = {
-				prefix = "",
-				suffix = " day${plural}"
-			},
-			month = {
-				prefix = "",
-				suffix = " month${plural}"
-			},
-			year = {
-				prefix = "",
-				suffix = " year${plural}"
-			}
+	---@class IntegerFlag
+	local flag = {
+		name = name,
+		default_value = default_value,
+		tags = tags,
+		read_permission_requirement = read_permission_requirement,
+		write_permission_requirement = write_permission_requirement,
+		function_to_execute = function_to_execute,
+		flag_type = "integer",
+		limit = {
+			min = min,
+			max = max
 		}
 	}
-}
 
----@type table<timeFormatUnits, number> the seconds needed to make up each unit.
-local seconds_per_unit = {
-	millisecond = 0.001,
-	second = 1,
-	minute = 60,
-	hour = 3600,
-	day = 86400,
-	week = 604800,
-	month = 86400*days_per_month,
-	year = 86400*days_in_a_year
-}
+	registered_flags[name] = flag
 
--- 1 being smallest unit, going up to largest unit
----@type table<integer, timeFormatUnits>
-local unit_heiarchy = {
-	"millisecond",
-	"second",
-	"minute",
-	"hour",
-	"day",
-	"week",
-	"month",
-	"year"
-}
+	if g_savedata.flags[name] == nil then
+		g_savedata.flags[name] = default_value
+	end
+end
 
----[[@param formatting string the way to format it into time, wrap the following in ${}, overflow will be put into the highest unit available. t is ticks, ms is milliseconds, s is seconds, m is minutes, h is hours, d is days, w is weeks, M is months, y is years. if you want to hide the number if its 0, use : after the time type, and then optionally put the message after that you want to only show if that time unit is not 0, for example, "${s: seconds}", enter "default" to use the default formatting.]]
+--# Register an number flag, can only be an number.
+---@param name string the name of the flag
+---@param default_value number the default_value for this flag
+---@param tags table<integer, string> a table of tags for this flag, can be used to filter tags for displaying to the user.
+---@param read_permission_requirement string the permission required to read this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
+---@param write_permission_requirement string the permission required to write to this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
+---@param function_to_execute function|nil the function to execute when this value is set. params are (in order): "value, old_value, peer_id", if you do not need to specify a function, just provide nil to avoid extra performance cost of calling an empty function.
+---@param description string the description of the flag
+---@param min integer|nil the minimum value for the flag (nil for none)
+---@param max integer|nil the maximum value for the flag (nil for none)
+function Flag.registerNumberFlag(name, default_value, tags, read_permission_requirement, write_permission_requirement, function_to_execute, description, min, max)
+	local function_name = "Flag.registerNumberFlag"
 
----@param format timeFormat the format type, check the time_formats table for examples or use one from there.
----@param time number the time in seconds, decimals can be used for milliseconds.
----@param as_game_time boolean? if you want it as in game time, leave false or nil for irl time (yet to be supported)
----@return string formatted_time the time formatted into a more readable string.
-function string.formatTime(format, time, as_game_time)
-	--[[if formatting == "default" then
-		formatting = "${y: years, }${M: months, }${d: days, }${h: hours, }${m: minutes, }${s: seconds, }${ms: milliseconds}"]]
-
-	-- return the time_zero_string if the given time is zero.
-	if time == 0 then
-		return format.time_zero_string
+	-- if this flag has already been registered
+	if registered_flags[name] then
+		d.print(("(%s) Flag %s already exists!"):format(function_name, name), true, 1)
+		return
 	end
 
-	local leftover_time = time
+	---@class NumberFlag
+	local flag = {
+		name = name,
+		default_value = default_value,
+		tags = tags,
+		read_permission_requirement = read_permission_requirement,
+		write_permission_requirement = write_permission_requirement,
+		function_to_execute = function_to_execute,
+		flag_type = "number",
+		limit = {
+			min = min,
+			max = max
+		}
+	}
 
-	---@class formattedUnit
-	---@field unit_string string the string to put for this unit
-	---@field unit_name timeFormatUnits the unit's type
+	registered_flags[name] = flag
 
-	---@type table<integer, formattedUnit>
-	local formatted_units = {}
+	if g_savedata.flags[name] == nil then
+		g_savedata.flags[name] = default_value
+	end
+end
 
-	-- go through all of the units, largest unit to smallest.
-	for unit_index = #unit_heiarchy, 1, -1 do
-		-- get it's name
-		local unit_name = unit_heiarchy[unit_index]
+--# Register a string flag, can only be an string.
+---@param name string the name of the flag
+---@param default_value string the default_value for this flag
+---@param tags table<integer, string> a table of tags for this flag, can be used to filter tags for displaying to the user.
+---@param read_permission_requirement string the permission required to read this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
+---@param write_permission_requirement string the permission required to write to this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
+---@param function_to_execute function|nil the function to execute when this value is set. params are (in order): "value, old_value, peer_id", if you do not need to specify a function, just provide nil to avoid extra performance cost of calling an empty function.
+---@param description string the description of the flag
+function Flag.registerStringFlag(name, default_value, tags, read_permission_requirement, write_permission_requirement, description, function_to_execute)
+	local function_name = "Flag.registerStringFlag"
 
-		-- the unit's format data
-		local unit_data = format.units[unit_name]
-
-		-- unit data is nil if its not formatted, so just skip if its not in the formatting
-		if not unit_data then
-			goto next_unit
-		end
-
-		-- how many seconds can go into this unit
-		local seconds_in_unit =  seconds_per_unit[unit_name]
-
-		-- get the number of this unit from the given time.
-		local time_unit_instances = leftover_time/seconds_in_unit
-
-		-- skip this unit if we don't want to show zeros, and this is less than 1.
-		if not format.show_zeros and math.abs(time_unit_instances) < 1 then
-			goto next_unit
-		end
-
-		-- format this unit
-		local unit_string = ("%s%0.0f%s"):format(unit_data.prefix, time_unit_instances, unit_data.suffix)
-
-		-- if this unit is not 1, then add an s to where it wants the plurals to be.
-		unit_string = unit_string:setField("plural", math.floor(time_unit_instances) == 1 and "" or "s")
-
-		-- add the formatted unit to the formatted units table.
-		table.insert(formatted_units, {
-			unit_string = unit_string,
-			unit_name = unit_name
-		} --[[@as formattedUnit]])
-
-		-- subtract the amount of time this unit used up, from the leftover time.
-		leftover_time = leftover_time - math.floor(time_unit_instances)*seconds_in_unit
-
-		::next_unit::
+	-- if this flag has already been registered
+	if registered_flags[name] then
+		d.print(("(%s) Flag %s already exists!"):format(function_name, name), true, 1)
+		return
 	end
 
-	-- theres no formatted units, just put the message for when the time is zero.
-	if #formatted_units == 0 then
-		return format.time_zero_string
+	---@class StringFlag
+	local flag = {
+		name = name,
+		default_value = default_value,
+		tags = tags,
+		read_permission_requirement = read_permission_requirement,
+		write_permission_requirement = write_permission_requirement,
+		function_to_execute = function_to_execute,
+		flag_type = "string",
+	}
+
+	registered_flags[name] = flag
+
+	if g_savedata.flags[name] == nil then
+		g_savedata.flags[name] = default_value
+	end
+end
+
+--# Register an any flag, can be any value.
+---@param name string the name of the flag
+---@param default_value any the default_value for this flag
+---@param tags table<integer, string> a table of tags for this flag, can be used to filter tags for displaying to the user.
+---@param read_permission_requirement string the permission required to read this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
+---@param write_permission_requirement string the permission required to write to this flag. Create custom permissions via flag.registerPermission(), defaults are "none", "auth" and "admin"
+---@param function_to_execute function|nil the function to execute when this value is set. params are (in order): "value, old_value, peer_id", if you do not need to specify a function, just provide nil to avoid extra performance cost of calling an empty function.
+---@param description string the description of the flag
+function Flag.registerAnyFlag(name, default_value, tags, read_permission_requirement, write_permission_requirement, function_to_execute, description)
+	local function_name = "Flag.registerAnyFlag"
+
+	-- if this flag has already been registered
+	if registered_flags[name] then
+		d.print(("(%s) Flag %s already exists!"):format(function_name, name), true, 1)
+		return
 	end
 
-	-- sort the formatted_units table by the way the format wants it sorted.
-	table.sort(formatted_units,
-		function(a, b)
-			return math.xor(
-				seconds_per_unit[a.unit_name] < seconds_per_unit[b.unit_name],
-				format.largest_first
-			)
+	---@class AnyFlag
+	local flag = {
+		name = name,
+		default_value = default_value,
+		tags = tags,
+		read_permission_requirement = read_permission_requirement,
+		write_permission_requirement = write_permission_requirement,
+		function_to_execute = function_to_execute,
+		flag_type = "any",
+		description = description
+	}
+
+	registered_flags[name] = flag
+
+	if g_savedata.flags[name] == nil then
+		g_savedata.flags[name] = default_value
+	end
+end
+
+--[[
+
+	Register Default Permissions
+
+]]
+
+-- None Permission
+Flag.registerPermission(
+	"none",
+	function()
+		return true
+	end
+)
+
+-- Auth Permission
+Flag.registerPermission(
+	"auth",
+	function(peer_id)
+		local players = server.getPlayers()
+
+		for peer_index = 1, #players do
+			local player = players[peer_index]
+
+			if player.id == peer_id then
+				return player.auth
+			end
 		end
-	)
 
-	local formatted_time = formatted_units[1].unit_string
+		return false
+	end
+)
 
-	local formatted_unit_count = #formatted_units
-	for formatted_unit_index = 2, formatted_unit_count do
-		if formatted_unit_index == formatted_unit_count then
-			formatted_time = formatted_time..format.final_seperator..formatted_units[formatted_unit_index].unit_string
+-- Admin Permission
+Flag.registerPermission(
+	"admin",
+	function(peer_id)
+		local players = server.getPlayers()
+
+		for peer_index = 1, #players do
+			local player = players[peer_index]
+
+			if player.id == peer_id then
+				return player.admin
+			end
+		end
+
+		return false
+	end
+)
+
+Command.registerCommand(
+	"flag",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		local flag_name = arg[1]
+
+		if not flag_name then
+			d.print("You must specify a flag's name! get a list of flags via ?icm flags", false, 1, peer_id)
+			return
+		end
+
+		local flag = registered_flags[flag_name]
+
+		if not flag then
+			d.print(("The flag \"%s\" does not exist! Get a list of flags via ?icm flags"):format(flag_name), false, 1, peer_id)
+			return
+		end
+
+		-- the player is trying to read the flag
+		if not arg[2] then
+			-- check if the player has the permission to read the flag
+			
+			-- if the required read permission does not exist, default it to admin.
+
+			local read_permission = registered_permissions[flag.read_permission_requirement] or registered_permissions["admin"]
+
+			if not read_permission(peer_id) then
+				d.print(("You do not have permission to read this flag! You require the permission %s, contact a server admin/owner if you belive this is in mistake."):format(registered_permissions[flag.read_permission_requirement] and flag.read_permission_requirement or "admin"), false, 1, peer_id)
+				return
+			end
+
+			local flag_value = g_savedata.flags[flag_name]
+
+			if flag.flag_type ~= "string" and flag_value == "nil" then
+				flag_value = nil
+			end
+
+			-- if the flag's value is a string, format it as a string for display.
+			if type(flag_value) == "string" then
+				flag_value = ("\"%s\""):format(flag_value)
+			end
+
+			d.print(("%s's current value is: %s"):format(flag.name, flag_value), false, 0, peer_id)
 		else
-			formatted_time = formatted_time..format.seperator..formatted_units[formatted_unit_index].unit_string
-		end
-	end
+			-- the player is trying to set the flag
 
-	return formatted_time
-end
+			local write_permission = registered_permissions[flag.write_permission_requirement] or registered_permissions["admin"]
 
----# Sets the field in a string
---- for example: <br> 
----> self: "Money: ${money}" <br> field: "money" <br> value: 100 <br> **returns: "Money: 100"**
----
---- <br> This function is almost interchangable with gsub, but first checks if the string matches, which might help with performance in certain scenarios, also doesn't require the user to type the ${}, and can be cleaner to read.
----@param str string the string to set the fields in
----@param field string the field to set
----@param value any the value to set the field to
----@param skip_check boolean|nil if it should skip the check for if the field is in the string.
----@return string str the string with the field set.
-function string.setField(str, field, value, skip_check)
-
-	local field_str = ("${%s}"):format(field)
-	-- early return, as the field is not in the string.
-	if not skip_check and not str:match(field_str) then
-		return str
-	end
-
-	-- set the field.
-	str = str:gsub(field_str, tostring(value))
-
-	return str
-end
-
----# if a string has a field <br>
----
---- Useful for if you dont need to figure out the value to write for the field if it doesn't exist, to help with performance in certain scenarios
----@param str string the string to find the field in.
----@param field string the field to find in the string.
----@return boolean found_field if the field was found.
-function string.hasField(str, field)
-	return str:match(("${%s}"):format(field))
-end
-
-function string:toLiteral(literal_percent)
-	if literal_percent then
-		return self:gsub("([%(%)%.%%%+%-%*%?%[%^%$])", "%%%%%1")
-	end
-
-	return self:gsub("([%(%)%.%%%+%-%*%?%[%^%$])", "%%%1")
-end
--- required libraries
-
---# check for if none of the inputted variables are nil
----@param print_error boolean if you want it to print an error if any are nil (if true, the second argument must be a name for debugging puposes)
----@param ... any variables to check
----@return boolean none_are_nil returns true of none of the variables are nil or false
-function table.noneNil(print_error,...)
-	local _ = table.pack(...)
-	local none_nil = true
-	for variable_index, variable in pairs(_) do
-		if print_error and variable ~= _[1] or not print_error then
-			if not none_nil then
-				none_nil = false
-				if print_error then
-					d.print("(table.noneNil) a variable was nil! index: "..variable_index.." | from: ".._[1], true, 1)
-				end
-			end
-		end
-	end
-	return none_nil
-end
-
---# returns the number of elements in the table
----@param t table table to get the size of
----@return number count the size of the table
-function table.length(t)
-	if not t or type(t) ~= "table" then
-		return 0 -- invalid input
-	end
-
-	local count = 0
-
-	for _ in pairs(t) do -- goes through each element in the table
-		count = count + 1 -- adds 1 to the count
-	end
-
-	return count -- returns number of elements
-end
-
--- credit: woe | for this function
-function table.tabulate(t,...)
-	local _ = table.pack(...)
-	t[_[1]] = t[_[1]] or {}
-	if _.n>1 then
-		table.tabulate(t[_[1]], table.unpack(_, 2))
-	end
-end
-
---# function that turns strings into a table (Warning: very picky)
---- @param S string a table in string form
---- @return table T the string turned into a.table
-function table.fromString(S)
-	local function stringToTable(string_as_table, start_index)
-		local T = {}
-
-		local variable = nil
-		local str = ""
-
-		local char_offset = 0
-
-		start_index = start_index or 1
-
-		for char_index = start_index, string_as_table:len() do
-			char_index = char_index + char_offset
-
-			-- if weve gone through the entire string, accounting for the offset
-			if char_index > string_as_table:len() then
-				return T, char_index - start_index
+			if not write_permission(peer_id) then
+				d.print(("You do not have permission to write this flag! You require the permission %s, contact a server admin/owner if you belive this is in mistake."):format(registered_permissions[flag.write_permission_requirement] and flag.write_permission_requirement or "admin"), false, 1, peer_id)
+				return
 			end
 
-			-- the current character to read
-			local char = string_as_table:sub(char_index, char_index)
+			---@type string|nil|boolean|number
+			local set_value = table.concat(arg, " ", 2, #arg)
+			local original_set_value = set_value
 
-			-- if this is the opening of a table
-			if char == "{" then
-				local returned_table, chars_checked = stringToTable(string_as_table, char_index + 1)
-
-				if not variable then
-					table.insert(T, returned_table)
-				else
-					T[variable] = returned_table
+			if flag.flag_type ~= "string" then
+				if set_value == "nil" then
+					set_value = nil
 				end
 
-				char_offset = char_offset + (chars_checked or 0)
+				-- number and integer flags
+				if flag.flag_type == "number" or flag.flag_type == "integer" then
+					-- convert to number if number, integer if integer
+					set_value = flag.flag_type == "number" and tonumber(set_value) or math.tointeger(set_value)
 
-				variable = nil
+					-- cannot be converted to number if number, or integer if integer.
+					if not set_value then
+						d.print(("%s is not a %s! The flag %s requires %s inputs only!"):format(original_set_value, flag.flag_type, flag.name, flag.flag_type), false, 1, peer_id)
+						return
+					end
 
-			-- if this is the closing of a table, and a start of another
-			elseif string_as_table:sub(char_index, char_index + 2) == "},{" then
-				if variable then
-					T[variable] = str
+					-- check if outside of minimum
+					if flag.limit.min and set_value < flag.limit.min then
+						d.print(("The flag \"%s\" has a minimum value of %s, your input of %s is too low!"):format(flag.name, flag.limit.min, set_value), false, 1, peer_id)
+						return
+					end
+
+					-- check if outside of maximum
+					if flag.limit.max and set_value > flag.limit.max then
+						d.print(("The flag \"%s\" has a maximum value of %s, your input of %s is too high!"):format(flag.name, flag.limit.max, set_value), false, 1, peer_id)
+						return
+					end
 				end
 
-				return T, char_index - start_index + 1
+				-- boolean flags
+				if flag.flag_type == "boolean" then
+					set_value = string.toboolean(set_value)
 
-			-- if this is a closing of a table.
-			elseif char == "}" then
-				if variable and variable ~= "" then
-					T[variable] = str
-				elseif str ~= "" then
-					table.insert(T, str)
+					if set_value == nil then
+						d.print(("The flag \"%s\" requires the input to be a boolean, %s is not a boolean!"):format(flag.name, original_set_value))
+					end
 				end
 
-				return T, char_index - start_index
+				-- any flags
+				if flag.flag_type == "any" then
 
-			-- if we're recording the value to set the variable to
-			elseif char == "=" then
-				variable = str
-				str = ""
-
-			-- save the value of the variable
-			elseif char == "," then
-				if variable and variable ~= "" then
-					T[variable] = str
-				elseif str ~= "" then
-					table.insert(T, str)
+					-- parse the value (turn it into the expected type)
+					set_value = string.parseValue(set_value)
 				end
-
-				str = ""
-				variable = ""
-
-			-- write this character if its not a quote
-			elseif char ~= "\"" then
-				str = str..char
 			end
+
+			local old_flag_value = g_savedata.flags[flag_name]
+
+			-- set the flag
+			g_savedata.flags[flag_name] = set_value
+
+			-- call the function for when the flag is written, if one is specified
+			if flag.function_to_execute ~= nil then
+				flag.function_to_execute(set_value, old_flag_value, peer_id)
+			end
+
+			d.print(("Successfully set the value for the flag \"%s\" to %s"):format(flag.name, set_value), false, 0, peer_id)
 		end
-	end
-
-	return table.pack(stringToTable(S, 1))[1]
-end
-
---- Returns the value at the path in _ENV
----@param path string the path we want to get the value at
----@return any value the value at the path, if it reached a nil value in the given path, it will return the value up to that point, and is_success will be false.
----@return boolean is_success if it successfully got the value at the path
-function table.getValueAtPath(path)
-	if type(path) ~= "string" then
-		d.print(("path must be a string! given path: %s type: %s"):format(path, type(path)), true, 1)
-		return nil, false
-	end
-
-	local cur_path
-	-- if our environment is modified, we will have to make a deep copy under the non-modified environment.
-	if _ENV_NORMAL then
-		cur_path = _ENV_NORMAL.table.copy.deep(_ENV, _ENV_NORMAL)
-	else
-		cur_path = table.copy.deep(_ENV)
-	end
-
-	local cur_path_string = "_ENV"
-
-	for index in string.gmatch(path, "([^%.]+)") do
-		if not cur_path[index] then
-			d.print(("%s does not contain a value indexed by %s, given path: %s"):format(cur_path_string, index, path), false, 1)
-			return cur_path, false
-		end
-
-		cur_path = cur_path[index]
-	end
-
-	return cur_path, true
-end
-
---- Sets the value at the path in _ENV
----@param path string the path we want to set the value at
----@param set_value any the value we want to set the value of what the path is
----@return boolean is_success if it successfully got the value at the path
-function table.setValueAtPath(path, set_value)
-	if type(path) ~= "string" then
-		d.print(("(table.setValueAtPath) path must be a string! given path: %s type: %s"):format(path, type(path)), true, 1)
-		return false
-	end
-
-	local cur_path = _ENV
-	-- if our environment is modified, we will have to make a deep copy under the non-modified environment.
-	--[[if _ENV_NORMAL then
-		cur_path = _ENV_NORMAL.table.copy.deep(_ENV, _ENV_NORMAL)
-	else
-		cur_path = table.copy.deep(_ENV)
-	end]]
-
-	local cur_path_string = "_ENV"
-
-	local index_count = 0
-
-	local last_index, got_count = string.countCharInstances(path, "%.")
-
-	last_index = last_index + 1
-
-	if not got_count then
-		d.print(("(table.setValueAtPath) failed to get count! path: %s"):format(path))
-		return false
-	end
-
-	for index in string.gmatch(path, "([^%.]+)") do
-		index_count = index_count + 1
-
-		if not cur_path[index] then
-			d.print(("(table.setValueAtPath) %s does not contain a value indexed by %s, given path: %s"):format(cur_path_string, index, path), false, 1)
-			return false
-		end
-
-		if index_count == last_index then
-			cur_path[index] = set_value
-
-			return true
-		end
-
-		cur_path = cur_path[index]
-	end
-
-	d.print("(table.setValueAtPath) never reached end of path?", true, 1)
-	return false
-end
-
--- a table containing a bunch of functions for making a copy of tables, to best fit each scenario performance wise.
-table.copy = {
-
-	iShallow = function(t, __ENV)
-		__ENV = __ENV or _ENV
-		return {__ENV.table.unpack(t)}
 	end,
-	shallow = function(t, __ENV)
-		__ENV = __ENV or _ENV
+	"none",
+	"Used to manage more advanced settings, such as disabling modules.",
+	"Used to manage more advanced settings.",
+	{"sync_tick_rate false","sync_tick_rate"},
+	"<flag_name> [value]"
+)
 
-		local t_type = __ENV.type(t)
-
-		local t_shallow
-
-		if t_type == "table" then
-			for key, value in __ENV.next, t, nil do
-				t_shallow[key] = value
-			end
+Command.registerCommand(
+	"flags",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		if arg[1] then
+			d.print("Does not yet support the ability to search for flags, only able to give a full list for now, sorry!", false, 0, peer_id)
+			return
 		end
 
-		return t_shallow or t
+		d.print("\n-- Flags --", false, 0, peer_id)
+
+		--TODO: make it sort by tags and filter by tags.
+
+		local flag_list = {}
+
+		-- clones, as we will be modifying them and sorting them for display purposes, and we don't want to modify the actual flags.
+		local cloned_registered_flags = table.copy.deep(registered_flags)
+		for _, flag in pairs(cloned_registered_flags) do
+			table.insert(flag_list, flag)
+		end
+
+		-- sort the list for display purposes
+		table.sort(flag_list, function(a, b)
+			-- if the types are the same, then sort alphabetically by name
+			if a.flag_type == b.flag_type then
+				return a.name < b.name
+			end
+		
+			-- the types are different, sort alphabetically by type.
+			return a.flag_type < b.flag_type
+		end)
+
+		local last_type = "none"
+
+		for flag_index = 1, #flag_list do
+			local flag = flag_list[flag_index]
+
+			-- print the following flag category, if this is now printing a new category of flags
+			if last_type ~= flag.flag_type then
+				d.print(("\n--- %s Flags ---"):format(flag.flag_type:upperFirst()), false, 0, peer_id)
+				last_type = flag.flag_type
+			end
+
+			-- print the flag data
+			d.print(("-----\nName: %s\nValue: %s\nTags: %s"):format(flag.name, g_savedata.flags[flag.name], table.concat(flag.tags, ", ")), false, 0, peer_id)
+		end
 	end,
-	deep = function(t, __ENV)
+	"none",
+	"Used to list all of the flags which you have permission to read, flags are used for more advanced settings.",
+	"Used to list the flags.",
+	{"flags"}
+)
 
-		__ENV = __ENV or _ENV
-
-		local function deepCopy(T)
-			local copy = {}
-			if __ENV.type(T) == "table" then
-				for key, value in __ENV.next, T, nil do
-					copy[deepCopy(key)] = deepCopy(value)
-				end
-			else
-				copy = T
-			end
-			return copy
-		end
-	
-		return deepCopy(t)
-	end
-}
 
 -- library name
 Debugging = {}
@@ -3602,1284 +4264,1540 @@ Flag.registerBooleanFlag(
 	nil,
 	"if enabled the tracebacks will print the tables, default disabled as some tables will break the messages and make them massive."
 )
- -- required to print messages -- required to get data on players -- required for some of its helpful string functions -- required for some of its helpful table functions
 
-player_commands = {
-	normal = {
-		info = {
-			short_desc = "prints info about the mod",
-			desc = "prints some info about the mod in chat! including version, world creation version, times reloaded, ect. Really helpful if you attach the commands output in bug reports!",
-			args = "none",
-			example = "?impwep info",
-		},
-		help = {
-			short_desc = "shows a list of all of the commands",
-			desc = "shows a list of all of the commands, to learn more about a command, type to commands name after \"help\" to learn more about it",
-			args = "[command]",
-			example = "?impwep help info",
-		},
-		flag = {
-			short_desc = "allows you to set flags or get their value.",
-			desc = "allows you to set flags or get their value, which are a more advanced type of setting, which can control things like toggling features, changing behaviours, and just general debug",
-			args = "<flag_name> <value>",
-			example = "?icm flag sync_tick_rate false, ?icm flag sync_tick_rate"
-		},
-		flags = {
-			short_desc = "allows you to get a list of flags",
-			desc = "allows you to get a list of flags, which are a more advanced type of setting, which can control things like toggling features, changing behaviours, and just general debug",
-			args = "<flag_name> [tag]",
-			example = "?icm flags, ?icm flags feature"
-		}
-	},
-	admin = {
-		reset = {
-			short_desc = "reset's the ai's commands",
-			desc = "this resets the ai's commands, this is helpful for testing and debugging mostly",
-			args = "none",
-			example = "?impwep reset",
-		},
-		speed = {
-			short_desc = "lets you change ai's pseudo speed",
-			desc = "this allows you to change the multiplier of the ai's pseudo speed, with the arg being the amount to times it by",
-			args = "(multiplier)",
-			example = "?impwep pseudo_speed 5",
-		},
-		vreset = {
-			short_desc = "lets you reset an ai's state",
-			desc = "this lets you reset an ai vehicle's state, such as holding, stationary, ect",
-			args = "(vehicle_id)",
-			example = "?impwep vreset 655",
-		},
-		target = {
-			short_desc = "lets you change the ai's target",
-			desc = "this lets you change what the ai is targeting, so they will attack it instead",
-			args = "(vehicle_id)",
-			example = "?impwep target 500",
-		},
-		spawn_vehicle = { -- spawn vehicle
-			short_desc = "lets you spawn in an ai vehicle",
-			desc = "this lets you spawn in a ai vehicle, if you dont specify one, it will spawn a random ai vehicle, and if you specify \"scout\", it will spawn a scout vehicle if it can spawn. specify x and y to spawn it at a certain location, or \"near\" and then a minimum distance and then a maximum distance",
-			args = "[vehicle_id|vehicle_type|\"scout\"] [x & y|\"near\" & min_range & max_range] ",
-			example = "?impwep sv Eurofighter\n?impwep sv Eurofighter -500 500\n?impwep sv Eurofighter near 1000 5000\n?impwep sv heli",
-		},
-		vehicle_list = { -- vehicle list
-			short_desc = "prints a list of all vehicles",
-			desc = " prints a list of all of the AI vehicles in the addon, also shows their formatted name, which is used in commands",
-			args = "none",
-			example = "?impwep vehicle_list",
-		},
-		debug = {
-			short_desc = "enables or disables debug mode",
-			desc = "lets you toggle debug mode, also shows all the AI vehicles on the map with tons of info valid debug types: \"all\", \"chat\", \"profiler\" and \"map\"",
-			args = "(debug_type) [peer_id]",
-			example = "?impwep debug all\n?impwep debug map 0",
-		},
-		st = { -- spawn turret
-			short_desc = "spawns a turret at every enemy AI island",
-			desc = "spawns a turret at every enemy AI island",
-			args = "none",
-			example = "?impwep st",
-		},
-		cp = { -- capture point
-			short_desc = "allows you to change who owns a point",
-			desc = "allows you to change who owns a specific island",
-			args = "(island_name) (\"ai\"|\"neutral\"|\"player\")",
-			example = "?impwep cp North_Harbour ai",
-		},
-		aimod = {
-			short_desc = "lets you get an ai's spawning modifier",
-			desc = "lets you see what an ai's role, type, strategy or vehicle's spawning modifier is",
-			args = "(role) [type] [strategy] [constructable_vehicle_id]",
-			example = "?impwep aimod attack heli general 0"
-		},
-		setmod = {
-			short_desc = "lets you change an ai's spawning modifier",
-			desc = "lets you change what the ai's role spawning modifier is, does not yet support type, strategy or constructable vehicle id",
-			args = "(\"reward\"|\"punish\") (role) (modifier: 1-5)",
-			example = "?impwep setmod reward attack 4"
-		},
-		delete_vehicle = { -- delete vehicle
-			short_desc = "lets you delete an ai vehicle",
-			desc = "lets you delete an ai vehicle by vehicle id, or all by specifying \"all\", or all vehicles that have been damaged by specifying \"damaged\"",
-			args = "(vehicle_id|\"all\"|\"damaged\")",
-			example = "?impwep delete_vehicle all"
-		},
-		teleport = { -- teleport vehicle
-			short_desc = "lets you teleport an ai vehicle",
-			desc = "lets you teleport an ai vehicle by vehicle id, to the specified x, y and z",
-			args = "(vehicle_id) (x) (y) (z)",
-			example = "?impwep teleport 50 100 10 -5000"
-		},
-		si = { -- set scout intel
-			short_desc = "lets you set the ai's scout level",
-			desc = "lets you set the ai's scout level on a specific island, from 0 to 100 for 0% scouted to 100% scouted",
-			args = "(island_name) (0-100)",
-			example = "?impwep si North_Harbour 100"
-		},
-		setting = {
-			short_desc = "lets you change or get a specific setting and can get a list of all settings",
-			desc = "if you do not input the setting name, it will show a list of all valid settings, if you input a setting name but not a value, it will tell you the setting's current value, if you enter both the setting name and the setting value, it will change that setting to that value",
-			args = "[setting_name] [value]",
-			example = "?impwep setting MAX_BOAT_AMOUNT 5\n?impwep setting MAX_BOAT_AMOUNT\n?impwep setting"
-		},
-		ai_knowledge = {
-			short_desc = "shows the 3 vehicles it thinks is good against you",
-			desc = "shows the 3 vehicles it thinks is good against you, and the 3 that it thinks is weak against you",
-			args = "none",
-			example = "?impwep ai_knowledge"
-		},
-		reset_cargo = {
-			short_desc = "resets the ai's cargo storages",
-			desc = "resets the all island cargo storages to 0 for each resource, leave island blank for all islands, leave cargo_type blank for all resources",
-			args = "[island] [cargo_type]",
-			example = "?impwep reset_cargo\n?impwep reset_cargo North_Harbour\n?impwep reset_cargo Garrison_Toddy oil"
-		},
-		debug_cache = {
-			short_desc = "",
-			desc = "",
-			args = "",
-			example = ""
-		},
-		debug_cargo1 = {
-			short_desc = "",
-			desc = "",
-			args = "",
-			example = ""
-		},
-		debug_cargo2 = {
-			short_desc = "",
-			desc = "",
-			args = "",
-			example = ""
-		},
-		clear_cache = {
-			short_desc = "",
-			desc = "",
-			args = "",
-			example = ""
-		},
-		addon_info = {
-			short_desc = "",
-			desc = "",
-			args = "",
-			example = ""
-		},
-		vision_reset = {
-			short_desc = "",
-			desc = "",
-			args = "",
-			example = ""
-		},
-		reset_prefabs = {
-			short_desc = "",
-			desc = "",
-			args = "",
-			example = ""
-		},
-		debugmigration = {
-			short_desc = "",
-			desc = "",
-			args = "",
-			example = ""
-		},
-		queueconvoy = {
-			short_desc = "queues a convoy.",
-			desc = "queues a convoy to be sent out, will be sent out once theres not any convoys.",
-			args = "",
-			example = "?icm queue_convoy"
-		},
-		airvehicleskamikaze = {
-			short_desc = "kamikaze.",
-			desc = "forces all air vehicles to have their target coordinates set to the target's position, when they have a target.",
-			args = "",
-			example = "?icm air_vehicles_kamikaze"
-		},
-		getmemusage = {
-			short_desc = "returns memory usage of this addon",
-			desc = "returns how much memory the lua environment is using, this requires a modified version of sw which has the base lua functions injected.",
-			args = "",
-			example ="?icm getmemusage"
-		},
-		causeerror = {
-			short_desc = "causes an error when the specified function is called.",
-			desc = "causes an error when the specified function is called. Useful for debugging the traceback debug, or trying to reproduce an error.",
-			args = "<function_name>",
-			example = "?icm cause_error math.euclideanDistance"
-		},
-		printtraceback = {
-			short_desc = "",
-			desc = "",
-			args = "",
-			example = ""
-		},
-		execute = {
-			short_desc = "allows you to get, set or call global variables.",
-			desc = "allows you to get or set global variables, and call global functions with specified arguments.",
-			args = "(address)[(\"(\"function_args\")\") value]",
-			example = "?icm execute g_savedata.debug.traceback.enabled\n?icm execute g_savedata.debug.traceback.debug true\n?icm execute sm.train(\"reward\",\"attack\",5)"
-		},
-		ignite = {
-			short_desc = "allows you to ignite an ai vehicle",
-			desc = "allows you to ignite one or many ai vehicles by spawning a fire on them.",
-			args = "(vehicle_id)|\"all\" [size]",
-			example = "?icm ignite all\n?icm ignite 102 10"
-		}
-	},
-	host = {}
-}
 
-command_aliases = {
-	dbg = "debug",
-	pseudospeed = "speed",
-	sv = "spawnvehicle",
-	dv = "deletevehicle",
-	kill = "deletevehicle",
-	capturepoint = "cp",
-	capture = "cp",
-	captureisland = "cp",
-	spawnturret = "st",
-	scoutintel = "si",
-	setintel = "si",
-	vl = "vehiclelist",
-	listvehicles = "vehiclelist",
-	tp = "teleport",
-	teleport_vehicle = "teleport",
-	kamikaze = "airvehicleskamikaze"
-}
-
-function onCustomCommand(full_message, peer_id, is_admin, is_auth, prefix, command, ...)
-
-	prefix = string.lower(prefix)
-
-	--? if the command they're entering is not for this addon
-	if prefix ~= "?impwep" and prefix ~= "?icm" then
-		return
-	end
-
-	--? if they didn't enter a command
-	if not command then
-		d.print("you need to specify a command! use\n\"?impwep help\" to get a list of all commands!", false, 1, peer_id)
-		return
-	end
-
-	--*---
-	--* handle the command the player entered
-	--*---
-
-	command = string.friendly(command, true) -- makes the command friendly, removing underscores, spaces and captitals
-	local arg = table.pack(...) -- this will supply all the remaining arguments to the function
-
-	--? if dlc_weapons is disabled or the player does not have it (if in singleplayer)
-	if not is_dlc_weapons then
-
-		if not full_message:match("-f") then
-
-			--? if vanilla conquest mode was left enabled
-			if g_savedata.info.addons.default_conquest_mode then
-				d.print("Improved Conquest Mode is disabled as you left Vanilla Conquest Mode enabled! Please create a new world and disable \"DLC Weapons AI\"", false, 1, peer_id)
-			end
-
-			d.print("Error: Improved Conquest Mode has been disabled.", false, 1, peer_id)
-
-			return
-		end
-
-		d.print("Bypassed addon being disabled!", false, 0, peer_id)
-
-		-- remove -f from the args
-
-		for argument = 1, #arg do
-			if arg[argument] == "-f" then
-				table.remove(arg, argument)
+--# check for if none of the inputted variables are nil
+---@param print_error boolean if you want it to print an error if any are nil (if true, the second argument must be a name for debugging puposes)
+---@param ... any variables to check
+---@return boolean none_are_nil returns true of none of the variables are nil or false
+function table.noneNil(print_error,...)
+	local _ = table.pack(...)
+	local none_nil = true
+	for variable_index, variable in pairs(_) do
+		if print_error and variable ~= _[1] or not print_error then
+			if not none_nil then
+				none_nil = false
+				if print_error then
+					d.print("(table.noneNil) a variable was nil! index: "..variable_index.." | from: ".._[1], true, 1)
+				end
 			end
 		end
 	end
+	return none_nil
+end
 
-	--? if this command is an alias
-	-- save original command, may be used later.
-	local original_command = command
-	if command_aliases[command] then
-		command = command_aliases[command]
+--# returns the number of elements in the table
+---@param t table table to get the size of
+---@return number count the size of the table
+function table.length(t)
+	if not t or type(t) ~= "table" then
+		return 0 -- invalid input
 	end
 
-	local executer_player_data = pl.dataByPID(peer_id)
+	local count = 0
 
-	-- 
-	-- commands all players can execute
-	--
-	if command == "info" then
-		d.print("------ Improved Conquest Mode Info ------", false, 0, peer_id)
-		d.print("Version: "..ADDON_VERSION, false, 0, peer_id)
-		if not g_savedata.info.addons.ai_paths then
-			d.print("AI Paths Disabled (will cause ship pathfinding issues)", false, 1, peer_id)
-		end
-
-		local version_name, is_success = comp.getVersion(1)
-		if not is_success then
-			d.print("(command info) failed to get creation version", false, 1)
-			return
-		end
-
-		local version_data, is_success = comp.getVersionData(version_name)
-		if not is_success then
-			d.print("(command info) failed to get version data of creation version", false, 1)
-			return
-		end
-		d.print("World Creation Version: "..version_data.data_version, false, 0, peer_id)
-		d.print("Times Addon Data has been Updated: "..tostring(#g_savedata.info.version_history and #g_savedata.info.version_history - 1 or 0), false, 0, peer_id)
-		if g_savedata.info.version_history and #g_savedata.info.version_history ~= nil and #g_savedata.info.version_history ~= 0 then
-			d.print("Version History", false, 0, peer_id)
-			for i = 1, #g_savedata.info.version_history do
-				local has_backup = g_savedata.info.version_history[i].backup_g_savedata
-				d.print(i..": "..tostring(g_savedata.info.version_history[i].version), false, 0, peer_id)
-			end
-		end
-
-	elseif command == "flag" or command == "flags" then
-		Flag.onFlagCommand(full_message, peer_id, is_admin, is_auth, command, arg)
+	for _ in pairs(t) do -- goes through each element in the table
+		count = count + 1 -- adds 1 to the count
 	end
 
+	return count -- returns number of elements
+end
 
-	--
-	-- admin only commands
-	--
-	if is_admin then
-		if command == "reset" then
-			for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
-				if squad_index ~= RESUPPLY_SQUAD_INDEX then
-					setSquadCommand(squad, SQUAD.COMMAND.NONE)
-					if squad.command == SQUAD.COMMAND.DEFEND then
-						squad.command = SQUAD.COMMAND.NONE
-					end
-				end
-			end
-			g_is_air_ready = true
-			g_is_boats_ready = false
-			g_savedata.is_attack = false
-			d.print("reset all squads", false, 0, peer_id)
+-- credit: woe | for this function
+function table.tabulate(t,...)
+	local _ = table.pack(...)
+	t[_[1]] = t[_[1]] or {}
+	if _.n>1 then
+		table.tabulate(t[_[1]], table.unpack(_, 2))
+	end
+end
 
-		elseif command == "speed" then
-			d.print("set speed multiplier from "..tostring(g_debug_speed_multiplier).." to "..tostring(arg[1]), false, 0, peer_id)
-			g_debug_speed_multiplier = arg[1]
+--# function that turns strings into a table (Warning: very picky)
+--- @param S string a table in string form
+--- @return table T the string turned into a.table
+function table.fromString(S)
+	local function stringToTable(string_as_table, start_index)
+		local T = {}
 
-		elseif command == "vreset" then
-			s.resetVehicleState(arg[1])
+		local variable = nil
+		local str = ""
 
-		elseif command == "target" then
-			for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
-				for vehicle_id, vehicle_object in pairs(squad.vehicles) do
-					for _, object_id in  pairs(vehicle_object.survivors) do
-						s.setAITargetVehicle(object_id, arg[1])
-					end
-				end
-			end
+		local char_offset = 0
 
-		elseif command == "visionreset" then
-			d.print("resetting all squad vision data", false, 0, peer_id)
-			for _, squad in pairs(g_savedata.ai_army.squadrons) do
-				squad.target_players = {}
-				squad.target_vehicles = {}
-			end
-			d.print("reset all squad vision data", false, 0, peer_id)
-			
-		elseif command == "spawnvehicle" then --spawn vehicle
+		start_index = start_index or 1
 
-			-- if vehicle not specified, spawn random vehicle
-			if not arg[1] then
-				d.print("Spawning Random Enemy AI Vehicle", false, 0, peer_id)
-				v.spawn()
-				return
+		for char_index = start_index, string_as_table:len() do
+			char_index = char_index + char_offset
+
+			-- if weve gone through the entire string, accounting for the offset
+			if char_index > string_as_table:len() then
+				return T, char_index - start_index
 			end
 
-			local valid_types = {
-				land = true,
-				plane = true,
-				heli = true,
-				helicopter = true,
-				boat = true
-			}
+			-- the current character to read
+			local char = string_as_table:sub(char_index, char_index)
 
-			local vehicle_id = sm.getVehicleListID(string.gsub(arg[1], "_", " "))
+			-- if this is the opening of a table
+			if char == "{" then
+				local returned_table, chars_checked = stringToTable(string_as_table, char_index + 1)
 
-			if not vehicle_id and arg[1] ~= "scout" and arg[1] ~= "cargo" and not valid_types[string.lower(arg[1])] and not arg[1]:match("--count:") then
-				d.print("Was unable to find a vehicle with the name \""..arg[1].."\", use '?impwep vl' to see all valid vehicle names", false, 1, peer_id)
-				return
-			end
-
-			d.print("Spawning \""..arg[1].."\"", false, 0, peer_id)
-
-			if arg[1] == "cargo" then -- they want to spawn a cargo vehicle
-				v.spawn(arg[1])
-			elseif arg[1] == "scout" then -- they want to spawn a scout
-				local scout_exists = false
-
-				-- check if theres already a scout that exists
-				for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
-					for vehicle_index, vehicle in pairs(squad.vehicles) do
-						if vehicle.role == "scout" then
-							scout_exists = true
-							break
-						end
-					end
-
-					if scout_exists then
-						break
-					end
-				end
-
-				if scout_exists then -- if a scout vehicle already exists
-					d.print("unable to spawn scout vehicle: theres already a scout vehicle!", false, 1, peer_id)
-					return
-				end
-
-				-- spawn scout
-				v.spawn(arg[1])
-
-			else
-
-				--[[
-					look for "--count:" arg, if its there, take the number after :, and remove --count from arguments table
-					if there is none, default to 1
-				]]
-
-				local spawn_count = 1
-				local _, count_end = full_message:find("--count:")
-				if count_end then
-					local _, value_end = full_message:find("[^%d]", count_end + 1)
-
-					-- this could happen if --count: is specified at the end of the string, so we want to deafult it to the length
-					if not value_end then
-						value_end = full_message:len() + 1
-					end
-
-					local value = full_message:sub(count_end + 1, value_end - 1)
-					if not math.tointeger(value) then
-						d.print(("count value has to be a number! given value: %s"):format(value), false, 1, peer_id)
-						goto onCustomCommand_spawnVehicle_countInvalid
-					end
-
-					spawn_count = math.tointeger(value) or 1
-
-					for arg_i = 1, arg.n do
-						if arg[arg_i]:match("--count:"..value) then
-							table.remove(arg, arg_i)
-							arg.n = arg.n - 1
-							break
-						end
-					end
-				end
-
-				::onCustomCommand_spawnVehicle_countInvalid::
-
-				for _ = 1, spawn_count do
-					local vehicle_data = nil
-					local successfully_spawned = false
-
-					if not arg[1] or not valid_types[string.lower(arg[1])] then
-						-- they did not specify a type of vehicle to spawn
-							successfully_spawned, vehicle_data = v.spawn(vehicle_id, nil, true)
-					else
-						-- they specified a type of vehicle to spawn
-							successfully_spawned, vehicle_data = v.spawn(nil, string.lower(arg[1]), true)
-					end
-					if successfully_spawned and type(vehicle_data) == "table" then
-						-- if the player didn't specify where to spawn it
-						if arg[2] == nil then
-							goto onCustomCommand_spawnVehicle_spawnNext
-						end
-
-						if arg[2] == "near" then -- the player selected to spawn it in a range
-							arg[3] = tonumber(arg[3]) or 150
-							arg[4] = tonumber(arg[4]) or 1900
-							if arg[3] >= 150 then -- makes sure the min range is equal or greater than 150
-								if arg[4] >= arg[3] then -- makes sure the max range is greater or equal to the min range
-									if vehicle_data.vehicle_type == VEHICLE.TYPE.BOAT then
-										local player_pos = s.getPlayerPos(peer_id)
-										local new_location, found_new_location = s.getOceanTransform(player_pos, arg[3], arg[4])
-										if found_new_location then
-											-- teleport vehicle to new position
-											v.teleport(vehicle_data.group_id, new_location)
-											d.print("Spawned "..vehicle_data.name.." at x:"..new_location[13].." y:"..new_location[14].." z:"..new_location[15], false, 0, peer_id)
-										else
-											-- delete vehicle as it was unable to find a valid position
-											v.kill(vehicle_data, true, true)
-											d.print("unable to find a valid area to spawn the ship! Try increasing the radius!", false, 1, peer_id)
-										end
-									elseif vehicle_data.vehicle_type == VEHICLE.TYPE.LAND then
-										--[[
-										local possible_islands = {}
-										for island_index, island in pairs(g_savedata.islands) do
-											if island.faction ~= ISLAND.FACTION.PLAYER then
-												if Tags.has(island.tags, "can_spawn=land") then
-													for in pairs(island.zones.land)
-												for g_savedata.islands[island_index]
-												table.insert(possible_islands.)
-											end
-										end
-										--]]
-										d.print("Sorry! As of now you are unable to select a spawn zone for land vehicles! this functionality will be added soon!", false, 1, peer_id)
-										v.kill(vehicle_data, true, true)
-									else
-										local player_pos = s.getPlayerPos(peer_id)
-										vehicle_data.transform[13] = player_pos[13] + math.random(-math.random(arg[3], arg[4]), math.random(arg[3], arg[4])) -- x
-										vehicle_data.transform[14] = vehicle_data.transform[14] * 1.5 -- y
-										vehicle_data.transform[15] = player_pos[15] + math.random(-math.random(arg[3], arg[4]), math.random(arg[3], arg[4])) -- z
-										v.teleport(vehicle_data.group_id, vehicle_data.transform)
-										d.print("Spawned "..vehicle_data.name.." at x:"..vehicle_data.transform[13].." y:"..vehicle_data.transform[14].." z:"..vehicle_data.transform[15], false, 0, peer_id)
-									end
-								else
-									d.print("your maximum range must be greater or equal to the minimum range!", false, 1, peer_id)
-									v.kill(vehicle_data, true, true)
-								end
-							else
-								d.print("the minimum range must be at least 150!", false, 1, peer_id)
-								v.kill(vehicle_data, true, true)
-							end
-						else
-							if tonumber(arg[2]) and tonumber(arg[2]) >= 0 or tonumber(arg[2]) and tonumber(arg[2]) <= 0 then -- the player selected specific coordinates
-								if tonumber(arg[3]) and tonumber(arg[3]) >= 0 or tonumber(arg[3]) and tonumber(arg[3]) <= 0 then
-									if vehicle_data.vehicle_type == VEHICLE.TYPE.BOAT then
-										local new_pos = m.translation(arg[2], 0, arg[3])
-										v.teleport(vehicle_data.group_id, new_pos)
-										vehicle_data.transform = new_pos
-										d.print("Spawned "..vehicle_data.name.." at x:"..arg[2].." y:0 z:"..arg[3], false, 0, peer_id)
-									elseif vehicle_data.vehicle_type == VEHICLE.TYPE.LAND then
-										d.print("sorry! but as of now you are unable to specify the coordinates of where to spawn a land vehicle!", false, 1, peer_id)
-										v.kill(vehicle_data, true, true)
-									else -- air vehicle
-										local new_pos = m.translation(arg[2], CRUISE_HEIGHT * 1.5, arg[3])
-										v.teleport(vehicle_data.group_id, new_pos)
-										vehicle_data.transform = new_pos
-										d.print("Spawned "..vehicle_data.name.." at x:"..arg[2].." y:"..(CRUISE_HEIGHT*1.5).." z:"..arg[3], false, 0, peer_id)
-									end
-								else
-									d.print("invalid z coordinate: "..tostring(arg[3]), false, 1, peer_id)
-									v.kill(vehicle_data, true, true)
-								end
-							else
-								d.print("invalid x coordinate: "..tostring(arg[2]), false, 1, peer_id)
-								v.kill(vehicle_data, true, true)
-							end
-						end
-					else
-						if type(vehicle_data) == "string" then
-							d.print("Failed to spawn vehicle! Error:\n"..vehicle_data, false, 1, peer_id)
-						else
-							d.print("Failed to spawn vehicle!\n(no error code recieved)", false, 1, peer_id)
-						end
-					end
-					::onCustomCommand_spawnVehicle_spawnNext::
-				end
-			end
-
-		elseif command == "teleport" then -- teleport vehicles
-			if not math.tointeger(arg[1]) then
-				d.print("vehicle_id must be a integer!", false, 1, peer_id)
-				return
-			end
-
-			if not tonumber(arg[2]) then
-				d.print("x coordinate must be a number!", false, 1, peer_id)
-				return
-			end
-
-			if not tonumber(arg[3]) then
-				d.print("y coordinate must be a number!", false, 1, peer_id)
-				return
-			end
-
-			if not tonumber(arg[4]) then
-				d.print("z coordinate must be a number!", false, 1, peer_id)
-				return
-			end
-
-			local new_transform = matrix.translation(tonumber(arg[2]) --[[@as number]], tonumber(arg[3]) --[[@as number]], tonumber(arg[4]) --[[@as number]])
-
-			local is_success = v.teleport(math.tointeger(arg[1]) --[[@as number]], new_transform)
-
-			if is_success then
-				d.print(("Teleported vehicle %s to\nx: %0.1f\ny: %0.1f\nz: %0.1f"):format(arg[1], new_transform[13], new_transform[14], new_transform[15]), false, 0, peer_id)
-			else
-				d.print(("Failed to teleport vehicle %s!"):format(arg[1]), false, 1, peer_id)
-			end
-
-		elseif command == "vehiclelist" then --vehicle list
-			d.print("Valid Vehicles:", false, 0, peer_id)
-			for vehicle_index, vehicle_object in ipairs(g_savedata.vehicle_list) do
-				d.print("\nName: \""..string.removePrefix(vehicle_object.location_data.name, true).."\"\nType: "..(string.gsub(Tags.getValue(vehicle_object.vehicle.tags, "vehicle_type", true), "wep_", ""):gsub("^%l", string.upper)), false, 0, peer_id)
-			end
-
-
-		elseif command == "debug" then
-
-			if not arg[1] then
-				d.print("You need to specify a type to debug! valid types are: \"all\" | \"chat\" | \"error\" | \"profiler\" | \"map\" | \"graph_node\" | \"driving\"", false, 1, peer_id)
-				return
-			end
-
-			--* make the debug type arg friendly
-			local selected_debug = string.friendly(arg[1])
-
-			-- turn the specified debug type into its integer index
-			local selected_debug_id = d.debugIDFromType(selected_debug)
-
-			if not selected_debug_id then
-				-- unknown debug type
-				d.print(("Unknown debug type: %s valid types are: \"all\" | \"chat\" | \"error\" | \"profiler\" | \"map\" | \"graph_node\" | \"driving\""):format(tostring(arg[1])), false, 1, peer_id)
-				return
-			end
-
-			-- if they specified a player, then toggle it for that specified player
-			if arg[2] then
-				local specified_peer_id = tonumber(arg[2])
-
-				local specified_peer_name = pl.dataByPID(specified_peer_id).name
-
-				local debug_output = d.setDebug(selected_debug_id, specified_peer_id)
-
-				-- message to who the player changed it for
-				d.print(("%s %s for you."):format(executer_player_data.name, debug_output), false, 0, specified_peer_id)
-
-				-- message to who changed it for them
-				d.print(("%s for %s."):format(debug_output, specified_peer_name), false, 0, peer_id)
-				-- d.print("unknown peer id: "..specified_peer_id, false, 1, peer_id)
-			else -- if they did not specify a player
-				d.print(d.setDebug(selected_debug_id, peer_id), false, 0, peer_id)
-			end
-
-		elseif command == "st" then --spawn turret
-			local turrets_spawned = 0
-			-- spawn at ai's main base
-			local spawned, vehicle_data = v.spawn("turret", "turret", true, g_savedata.ai_base_island)
-			if spawned then
-				turrets_spawned = turrets_spawned + 1
-			else
-				d.print("Failed to spawn a turret on island "..g_savedata.ai_base_island.name.."\nError:\n"..vehicle_data, true, 1)
-			end
-			-- spawn at enemy ai islands
-			for island_index, island in pairs(g_savedata.islands) do
-				if island.faction == ISLAND.FACTION.AI then
-					local spawned, vehicle_data = v.spawn("turret", "turret", true, island)
-					if spawned then
-						turrets_spawned = turrets_spawned + 1
-					else
-						d.print("Failed to spawn a turret on island "..island.name.."\nError:\n"..vehicle_data, true, 1)
-					end
-				end
-			end
-			d.print("spawned "..turrets_spawned.." turret"..(turrets_spawned ~= 1 and "s" or ""), false, 0, peer_id)
-
-
-		elseif command == "cp" then --capture point
-			if arg[1] and arg[2] then
-				local is_island = false
-				for island_index, island in pairs(g_savedata.islands) do
-					if island.name == string.gsub(arg[1], "_", " ") then
-						is_island = true
-						if island.faction ~= arg[2] then
-							if arg[2] == ISLAND.FACTION.AI or arg[2] == ISLAND.FACTION.NEUTRAL or arg[2] == ISLAND.FACTION.PLAYER then
-								captureIsland(island, arg[2], peer_id)
-							else
-								d.print(arg[2].." is not a valid faction! valid factions: | ai | neutral | player", false, 1, peer_id)
-							end
-						else
-							d.print(island.name.." is already set to "..island.faction..".", false, 1, peer_id)
-						end
-					end
-				end
-				if not is_island then
-					d.print(arg[1].." is not a valid island! Did you replace spaces with _?", false, 1, peer_id)
-				end
-			else
-				d.print("Invalid Syntax! command usage: ?impwep cp (island_name) (faction)", false, 1, peer_id)
-			end
-
-		elseif command == "aimod" then
-			if arg[1] then
-				sm.debug(peer_id, arg[1], arg[2], arg[3], arg[4])
-			else
-				d.print("you need to specify which type to debug!", false, 1, peer_id)
-			end
-
-		elseif command == "setmod" then
-			if arg[1] then
-				if arg[1] == "punish" or arg[1] == "reward" then
-					if arg[2] then
-						if g_savedata.constructable_vehicles[arg[2]] and g_savedata.constructable_vehicles[arg[2]].mod then
-							if tonumber(arg[3]) then
-								if arg[1] == "punish" then
-									if ai_training.punishments[tonumber(arg[3])] then
-										g_savedata.constructable_vehicles[arg[2]].mod = g_savedata.constructable_vehicles[arg[2]].mod + ai_training.punishments[tonumber(arg[3])]
-										d.print("Successfully set role "..arg[2].." to modifier: "..g_savedata.constructable_vehicles[arg[2]].mod, false, 0, peer_id)
-									else
-										d.print("Incorrect syntax! "..arg[3].." has to be a number from 1-5!", false, 1, peer_id)
-									end
-								elseif arg[1] == "reward" then
-									if ai_training.rewards[tonumber(arg[3])] then
-										g_savedata.constructable_vehicles[arg[2]].mod = g_savedata.constructable_vehicles[arg[2]].mod + ai_training.rewards[tonumber(arg[3])]
-										d.print("Successfully set role "..arg[2].." to modifier: "..g_savedata.constructable_vehicles[arg[2]].mod, false, 0, peer_id)
-									else
-										d.print("Incorrect syntax! "..arg[3].." has to be a number from 1-5!", false, 1, peer_id)
-									end
-								end
-							else
-								d.print("Incorrect syntax! "..arg[3].." has to be a number from 1-5!", false, 1, peer_id)
-							end
-						else
-							d.print("Unknown role: "..arg[2], false, 1, peer_id)
-						end
-					else
-						d.print("You need to specify which role to set!", false, 1, peer_id)
-					end
+				if not variable then
+					table.insert(T, returned_table)
 				else
-					d.print("Unknown reinforcement type: "..arg[1].." valid reinforcement types: \"punish\" and \"reward\"", false, 1, peer_id)
-				end
-			else
-				d.print("You need to specify wether to punish or reward!", false, 1, peer_id)
-			end
-
-		-- arg 1 = id
-		elseif command == "deletevehicle" then -- delete vehicle
-			if arg[1] then
-				if arg[1] == "all" or arg[1] == "damaged" then
-					local vehicle_counter = 0
-					for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
-						for vehicle_id, vehicle_object in pairs(squad.vehicles) do
-							if arg[1] ~= "damaged" or arg[1] == "damaged" and vehicle_object.current_damage > 0 then
-
-								-- refund the cargo to the island which was sending the cargo
-								Cargo.refund(vehicle_id)
-
-								v.kill(vehicle_object, true, true)
-								vehicle_counter = vehicle_counter + 1
-							end
-						end
-					end
-					if vehicle_counter == 0 then
-						d.print("There are no enemy AI vehicles to remove", false, 0, peer_id)
-					elseif vehicle_counter == 1 then
-						d.print("Removed "..vehicle_counter.." enemy AI vehicle", false, 0, peer_id)
-					elseif vehicle_counter > 1 then
-						d.print("Removed "..vehicle_counter.." enemy AI vehicles", false, 0, peer_id)
-					end
-				else
-					local vehicle_object, _, _ = Squad.getVehicle(tonumber(arg[1]))
-
-					if vehicle_object then
-
-						-- refund the cargo to the island which was sending the cargo
-						Cargo.refund(tonumber(arg[1]))
-
-						v.kill(vehicle_object, true, true)
-						d.print("Sucessfully deleted vehicle "..arg[1].." name: "..vehicle_object.name, false, 0, peer_id)
-					else
-						d.print("Unable to find vehicle with id "..arg[1]..", double check the ID!", false, 1, peer_id)
-					end
-				end
-			else
-				d.print("Invalid syntax! You must either choose a vehicle id, or \"all\" to remove all enemy AI vehicles", false, 1, peer_id) 
-			end
-
-
-		-- arg 1: island_name
-		-- arg 2: 0 - 100, what scout level in % to set it to
-		elseif command == "si" then -- scout island
-			if arg[1] then
-				if arg[2] then
-					if tonumber(arg[2]) then
-						if g_savedata.ai_knowledge.scout[string.gsub(arg[1], "_", " ")] then
-							g_savedata.ai_knowledge.scout[string.gsub(arg[1], "_", " ")].scouted = (math.clamp(tonumber(arg[2]), 0, 100)/100) * scout_requirement
-
-							-- announce the change to the players
-							local name = s.getPlayerName(peer_id)
-							s.notify(-1, "(Improved Conquest Mode) Scout Level Changed", name.." set "..arg[2].."'s scout level to "..(g_savedata.ai_knowledge.scout[string.gsub(arg[1], "_", " ")].scouted/scout_requirement*100).."%", 1)
-						else
-							d.print("Unknown island: "..string.gsub(arg[1], "_", " "), false, 1, peer_id)
-						end
-					else
-						d.print("Arg 2 has to be a number! Unknown value: "..arg[2], false, 1, peer_id)
-					end
-				else
-					d.print("Invalid syntax! you must specify the scout level to set it to (0-100)", false, 1, peer_id)
-				end
-			else
-				d.print("Invalid syntax! you must specify the island and the scout level (0-100) to set it to!", false, 1, peer_id)
-			end
-
-		
-		-- arg 1: setting name (optional)
-		-- arg 2: value (optional)
-		elseif command == "setting" then
-			if not arg[1] then
-				-- we want to print a list of all settings they can change
-				d.print("\nAll Improved Conquest Mode Settings", false, 0, peer_id)
-				for setting_name, setting_value in pairs(g_savedata.settings) do
-					d.print("-----\nSetting Name: "..setting_name.."\nSetting Type: "..type(setting_value), false, 0, peer_id)
-				end
-			elseif g_savedata.settings[arg[1]] ~= nil then -- makes sure the setting they selected exists
-				if not arg[2] then
-					-- print the current value of the setting they selected
-					local current_value = g_savedata.settings[arg[1]]
-
-					--? if this has a index in the rules for settings, if this is a number, and if the multiplier is not nil
-					if RULES.SETTINGS[arg[1]] and tonumber(current_value) and RULES.SETTINGS[arg[1]].input_multiplier then
-						current_value = math.noNil(current_value / RULES.SETTINGS[arg[1]].input_multiplier)
-					end
-
-					d.print(arg[1].."'s current value: "..tostring(current_value), false, 0, peer_id)
-				else
-					-- change the value of the setting they selected
-					if type(g_savedata.settings[arg[1]]) == "number" then
-						if tonumber(arg[2]) then
-
-							arg[2] = tonumber(arg[2])
-							
-							local input_multiplier = 1
-
-							if RULES.SETTINGS[arg[1]] then
-								--? if theres an input multiplier
-								if RULES.SETTINGS[arg[1]].input_multiplier then
-									input_multiplier = RULES.SETTINGS[arg[1]].input_multiplier
-									arg[2] = math.noNil(arg[2] * input_multiplier)
-								end
-								
-								--? if theres a set minimum, if this input is below the minimum and if the player did not yet acknowledge this
-								if RULES.SETTINGS[arg[1]].min and arg[2] <= RULES.SETTINGS[arg[1]].min.value and not executer_player_data.acknowledgements[arg[1]] then
-									
-									--* set that they've acknowledged this
-									if not executer_player_data.acknowledgements[arg[1]] then
-										executer_player_data.acknowledgements[arg[1]] = {
-											min = true,
-											max = false
-										}
-									else
-										executer_player_data.acknowledgements[arg[1]].min = true
-									end
-
-									d.print("Warning: setting "..arg[1].." to or below "..RULES.SETTINGS[arg[1]].min.value.." can result in "..RULES.SETTINGS[arg[1]].min.message.." Re-enter the command to acknowledge this and proceed anyways.", false, 1, peer_id)
-									return
-								end
-
-								--? if theres a set maximum, if this input is above or equal to the maximum and if the player did not yet acknowledge this
-								if RULES.SETTINGS[arg[1]].max and arg[2] >= RULES.SETTINGS[arg[1]].max.value and not executer_player_data.acknowledgements[arg[1]] then
-									
-									--* set that they've acknowledged this
-									if not executer_player_data.acknowledgements[arg[1]] then
-										executer_player_data.acknowledgements[arg[1]] = {
-											min = false,
-											max = true
-										}
-									else
-										executer_player_data.acknowledgements[arg[1]].max = true
-									end
-									d.print("Warning: setting a value to or above "..RULES.SETTINGS[arg[1]].max.value.." can result in "..RULES.SETTINGS[arg[1]].max.message.." Re-enter the command to acknowledge this and proceed anyways.", false, 1, peer_id)
-									return
-								end
-							end
-
-							d.print(s.getPlayerName(peer_id).." has changed the setting "..arg[1].." from "..math.noNil(g_savedata.settings[arg[1]]/input_multiplier).." to "..(arg[2]/input_multiplier), false, 0, -1)
-
-							----
-							-- special things to do whenever settings are changed
-							----
-
-
-							if arg[1] == "CAPTURE_TIME" and arg[2] ~= 0 and g_savedata.settings[arg[1]] ~= 0 then
-								-- if this is changing the capture timer, then re-adjust all of the capture timers for each island
-
-								for island_index, island in pairs(g_savedata.islands) do
-									island.capture_timer = island.capture_timer * (arg[2] / g_savedata.settings[arg[1]])
-								end
-							end
-
-							g_savedata.settings[arg[1]] = arg[2]
-						else
-							d.print(arg[2].." is not a valid value! it must be a number!", false, 1, peer_id)
-						end
-					elseif g_savedata.settings[arg[1]] == true or g_savedata.settings[arg[1]] == false then
-						if arg[2] == "true" then
-							d.print(s.getPlayerName(peer_id).." has changed the setting "..arg[1].." from "..tostring(g_savedata.settings[arg[1]]).." to "..arg[2], false, 0, -1)
-							g_savedata.settings[arg[1]] = true
-						elseif arg[2] == "false" then
-							d.print(s.getPlayerName(peer_id).." has changed the setting "..arg[1].." from "..tostring(g_savedata.settings[arg[1]]).." to "..arg[2], false, 0, -1)
-							g_savedata.settings[arg[1]] = false
-
-							if arg[1] == "CARGO_MODE" and arg[2] == false then
-								-- if cargo mode was disabled, remove all active convoys
-								
-								for cargo_vehicle_id, cargo_vehicle in pairs(g_savedata.cargo_vehicles) do
-
-									-- kill cargo vehicle
-									v.kill(cargo_vehicle.vehicle_data, true, true)
-
-									-- reset the squad's command
-									local squad_index, _ = Squad.getSquad(cargo_vehicle.vehicle_data)
-									g_savedata.ai_army.squadrons[squad_index].command = SQUAD.COMMAND.NONE
-								end
-							end
-						else
-							d.print(arg[2].." is not a valid value! it must be either \"true\" or \"false\"!", false, 1, peer_id)
-						end
-					else
-						d.print("g_savedata.settings."..arg[1].." is not a number or a boolean! please report this as a bug! Value of g_savedata.settings."..arg[1]..":"..g_savedata.settings[arg[1]], false, 1, peer_id)
-					end
-				end
-			else 
-				-- the setting they selected does not exist
-				d.print(arg[1].." is not a valid setting! do \"?impwep setting\" to get a list of all settings!", false, 1, peer_id)
-			end
-		
-		elseif command == "aiknowledge" then
-			local vehicles = sm.getStats()
-
-			if vehicles.best[1].mod == vehicles.worst[1].mod then
-				d.print("the adaptive AI doesn't know anything about you! all vehicles currently have the same chance to spawn.", false, 0, peer_id)
-			else
-				d.print("Top 3 vehicles the ai thinks is effective against you:", false, 0, peer_id)
-				for _, vehicle_data in ipairs(vehicles.best) do
-					d.print(_..": "..vehicle_data.name.." ("..vehicle_data.mod..")", false, 0, peer_id)
-				end
-				d.print("Bottom 3 vehicles the ai thinks is effective against you:", false, 0, peer_id)
-				for _, vehicle_data in ipairs(vehicles.worst) do
-					d.print(_..": "..vehicle_data.name.." ("..vehicle_data.mod..")", false, 0, peer_id)
-				end
-			end
-		
-		elseif command == "resetcargo" then
-			local was_reset, error = Cargo.reset(is.getDataFromName(arg[1]), string.friendly(arg[2]))
-			if was_reset then
-				d.print("Reset the cargo storages for all islands", false, 0, peer_id)
-			else
-				d.print("Cargo failed to reset! error: "..error, false, 1, peer_id)
-			end
-		
-		elseif command == "debugcache" then
-			d.print("Cache Writes: "..g_savedata.cache_stats.writes.."\nCache Failed Writes: "..g_savedata.cache_stats.failed_writes.."\nCache Reads: "..g_savedata.cache_stats.reads, false, 0, peer_id)
-		elseif command == "debugcargo1" then
-			d.print("asking cargo to do things...(get island distance)", false, 0, peer_id)
-			for island_index, island in pairs(g_savedata.islands) do
-				if island.faction == ISLAND.FACTION.AI then
-					Cargo.getIslandDistance(g_savedata.ai_base_island, island)
-				end
-			end
-		elseif command == "debugcargo2" then
-			d.print("asking cargo to do things...(get best route)", false, 0, peer_id)
-			island_selected = g_savedata.islands[tonumber(arg[1])]
-			if island_selected then
-				d.print("selected island index: "..island_selected.index, false, 0, peer_id)
-				local best_route = Cargo.getBestRoute(g_savedata.ai_base_island, island_selected)
-				if best_route[1] then
-					d.print("first transportation method: "..best_route[1].transport_method, false, 0, peer_id)
-				else
-					d.print("unable to find cargo route!", false, 0, peer_id)
-				end
-				if best_route[2] then
-					d.print("second transportation method: "..best_route[2].transport_method, false, 0, peer_id)
-				end
-				if best_route[3] then
-					d.print("third transportation method: "..best_route[3].transport_method, false, 0, peer_id)
-				end
-			else
-				d.print("incorrect island id: "..arg[1], false, 0, peer_id)
-			end
-		elseif command == "clearcache" then
-
-			d.print("clearing cache", false, 0, peer_id)
-			Cache.reset()
-			d.print("cache reset", false, 0, peer_id)
-
-		elseif command == "addoninfo" then -- command for debugging things such as why the addon name is broken
-
-			d.print("---- addon info ----", false, 0, peer_id)
-
-			-- get the addon name
-			local addon_name = "Improved Conquest Mode (".. string.match(ADDON_VERSION, "(%d%.%d%.%d)")..(IS_DEVELOPMENT_VERSION and ".dev)" or ")")
-
-			-- addon index
-			local true_addon_index, true_is_success = s.getAddonIndex(addon_name)
-			local addon_index, is_success = s.getAddonIndex()
-			d.print("addon_index: "..tostring(addon_index).." | "..tostring(true_addon_index).."\nsuccessfully found addon_index: "..tostring(is_success).." | "..tostring(true_is_success), false, 0, peer_id)
-
-			-- addon data
-			local true_addon_data = s.getAddonData(true_addon_index)
-			local addon_data = s.getAddonData(addon_index)
-			d.print("file_store: "..tostring(addon_data.file_store).." | "..tostring(true_addon_data.file_store).."\nlocation_count: "..tostring(addon_data.location_count).." | "..tostring(true_addon_data.location_count).."\naddon_name: "..tostring(addon_data.name).." | "..tostring(true_addon_data.name).."\npath_id: "..tostring(addon_data.path_id).." | "..tostring(true_addon_data.path_id), false, 0, peer_id)
-
-		elseif command == "resetprefabs" then
-			g_savedata.prefabs = {}
-			d.print("reset all prefabs", false, 0, peer_id)
-		elseif command == "debugmigration" then
-			d.print("is migrated? "..tostring(g_savedata.info.version_history ~= nil), false, 0, peer_id)
-		elseif command == "queueconvoy" then
-			g_savedata.tick_extensions.cargo_vehicle_spawn = RULES.LOGISTICS.CARGO.VEHICLES.spawn_time - g_savedata.tick_counter - 1
-			d.print("Updated convoy tick extension so a convoy will spawn when possible.", false, 0, peer_id)
-		elseif command == "airvehicleskamikaze" then
-			g_air_vehicles_kamikaze = not g_air_vehicles_kamikaze
-			d.print(("g_air_vehicles_kamikaze set to %s"):format(tostring(g_air_vehicles_kamikaze)))
-		elseif command == "getmemusage" then
-			if not collectgarbage then
-				d.print("The game does not have collectgarbage() injected, unable to get memory usage.", false, 1, peer_id)
-			else
-				d.print(("Lua is using %0.0fkb of memory."):format(collectgarbage("count")), false, 0, peer_id)
-			end
-		elseif command == "causeerror" then
-			local function_path = arg[1]
-			if not function_path then
-				d.print("You need to specify a function path!", false, 1, peer_id)
-				return
-			end
-
-			local value_at_path, got_path = table.getValueAtPath(function_path)
-
-			if not got_path then
-				d.print(("failed to get path. returned value:\n%s"):format(string.fromTable(value_at_path)), false, 1, peer_id)
-				return
-			end
-
-			if type(value_at_path) ~= "function" then
-				d.print(("value at path is not a function! returned type: %s, returned value:\n%s"):format(type(value_at_path), string.fromTable(value_at_path)), false, 1, peer_id)
-			end
-
-			d.print(("Warning, %s set function %s to cause an error when its called."):format(s.getPlayerName(peer_id), function_path), false, 0, -1)
-
-			local value_at_path = table.copy.deep(value_at_path)
-
-			local value_was_set = table.setValueAtPath(function_path, function(...)
-				return (function(...)
-					local x = nil + nil
-					return ...
-				end)(value_at_path(...))
-			end)
-
-			if not value_was_set then
-				d.print("Failed to set the function!", false, 1, peer_id)
-				return
-			end
-
-			d.print(("successfully set the function %s to cause an error when its called."):format(function_path), false, 0, peer_id)
-		elseif command == "printtraceback" then
-			-- swap to normal env to avoid a self reference loop
-			local __ENV = _ENV_NORMAL
-			__ENV._ENV_MODIFIED = _ENV
-			_ENV = __ENV
-
-			d.trace.print()
-
-			-- swap back to modified environment
-			_ENV = _ENV_MODIFIED
-		elseif command == "execute" then
-			local location_string = arg[1]
-			local value = arg[2]
-
-			--local _, index_count = location_string:gsub("%.", ".")
-
-			-- make sure its not a function call
-			--if location_string:match("%(") then
-				--[[if location_string:match("onCustomCommand") then
-					d.print("Hey, I see what you're trying to do there...", false, 1, peer_id)
-					goto onCustomCommand_execute_fail
-				end]]
-				--d.print("sorry, but the execute command does not yet support calling functions.", false, 1, peer_id)
-				--goto onCustomCommand_execute_fail
-			--end
-
-			--[[local selected_variable = _ENV
-			local built_path = ""
-			local index_depth = 0
-			for index, _ in location_string:gmatch("[%w_]+") do
-				if type(selected_variable) == "table" then
-					if index_depth == index_count and arg.n == 2 then
-						if value == "true" then
-							value = true
-						elseif value == "false" then
-							value = false
-						elseif arg.n == 2 and not value then
-							value = nil
-						elseif tonumber(value) then
-							value = tonumber(value)
-						else
-							value = value:gsub("\"", "")
-						end
-						selected_variable[index] = value
-						break
-					end
-
-					selected_variable = selected_variable[index]
+					T[variable] = returned_table
 				end
 
-				index_depth = index_depth + 1
-			end]]
+				char_offset = char_offset + (chars_checked or 0)
 
-			local value_at_path, is_success = table.getValueAtPath(location_string)
+				variable = nil
 
-			if not is_success then
-				d.print(("failed to get value at path %s"):format(location_string), false, 1, peer_id)
-				goto onCustomCommand_execute_fail
-			end
-
-
-			if arg.n == 2 then
-
-				local is_success = table.setValueAtPath(location_string, value)
-
-				if not is_success then
-					d.print(("failed to set the value at path %s to %s"):format(location_string, value), false, 1, peer_id)
-					goto onCustomCommand_execute_fail
+			-- if this is the closing of a table, and a start of another
+			elseif string_as_table:sub(char_index, char_index + 2) == "},{" then
+				if variable then
+					T[variable] = str
 				end
 
-				d.print(("set %s to %s"):format(location_string, value), false, 0, peer_id)
-			else
-				d.print(("value of %s: %s"):format(location_string, string.fromTable(value_at_path)), false, 0, peer_id)
-			end
+				return T, char_index - start_index + 1
 
-			::onCustomCommand_execute_fail::
-		elseif command == "ignite" then
-			local function igniteVehicle(vehicle_id)
-				local vehicle_pos, got_pos = server.getVehiclePos(vehicle_id)
-				if not got_pos then
-					d.print(("%s is not a vehicle!"):format(vehicle_id), false, -1, peer_id)
-					return
+			-- if this is a closing of a table.
+			elseif char == "}" then
+				if variable and variable ~= "" then
+					T[variable] = str
+				elseif str ~= "" then
+					table.insert(T, str)
 				end
 
-				local is_loaded = server.getVehicleSimulating(vehicle_id)
+				return T, char_index - start_index
 
-				if not is_loaded then
-					d.print(("%s is not loaded!"):format(vehicle_id), false, 1, peer_id)
-					return
+			-- if we're recording the value to set the variable to
+			elseif char == "=" then
+				variable = str
+				str = ""
+
+			-- save the value of the variable
+			elseif char == "," then
+				if variable and variable ~= "" then
+					T[variable] = str
+				elseif str ~= "" then
+					table.insert(T, str)
 				end
 
-				server.spawnFire(vehicle_pos, tonumber(arg[2]) or 1, 0, true, false, vehicle_id, 0)
-			end
-			if arg[1] == "all" then
-				for _, squad in pairs(g_savedata.ai_army.squadrons) do
-					for _, vehicle_object in pairs(squad.vehicles) do
-						if vehicle_object.state.is_simulating then
-							igniteVehicle(vehicle_object.group_id)
-						end
-					end
-				end
-			elseif tonumber(arg[1]) then
-				igniteVehicle(tonumber(arg[1]))
-			else
-				d.print(("Your specified argument %s is not a vehicle id or \"all\", do ?icm help ignite for help on how to use this command!"):format(arg[1]), false, 1, peer_id)
-			end
+				str = ""
+				variable = ""
 
-		end
-	elseif player_commands.admin[command] then
-		d.print("You do not have permission to use "..command..", contact a server admin if you believe this is incorrect.", false, 1, peer_id)
-	end
-
-	--
-	-- host only commands
-	--
-	if peer_id == 0 and is_admin then
-	elseif player_commands.host[command] then
-		d.print("You do not have permission to use "..command..", contact a server admin if you believe this is incorrect.", false, 1, peer_id)
-	end
-	
-	--
-	-- help command
-	--
-	if command == "help" then
-		if not arg[1] then -- print a list of all commands
-			
-			-- player commands
-			d.print("All Improved Conquest Mode Commands (PLAYERS)", false, 0, peer_id)
-			for command_name, command_info in pairs(player_commands.normal) do 
-				if command_info.args ~= "none" then
-					d.print("-----\nCommand\n?impwep "..command_name.." "..command_info.args, false, 0, peer_id)
-				else
-					d.print("-----\nCommand\n?impwep "..command_name, false, 0, peer_id)
-				end
-				d.print("Short Description\n"..command_info.short_desc, false, 0, peer_id)
-			end
-
-			-- admin commands
-			if is_admin then 
-				d.print("\nAll Improved Conquest Mode Commands (ADMIN)", false, 0, peer_id)
-				for command_name, command_info in pairs(player_commands.admin) do
-					if command_info.args ~= "none" then
-						d.print("-----\nCommand\n?impwep "..command_name.." "..command_info.args, false, 0, peer_id)
-					else
-						d.print("-----\nCommand\n?impwep "..command_name, false, 0, peer_id)
-					end
-					d.print("Short Description\n"..command_info.short_desc, false, 0, peer_id)
-				end
-			end
-
-			-- host only commands
-			if peer_id == 0 and is_admin then
-				d.print("\nAll Improved Conquest Mode Commands (HOST)", false, 0, peer_id)
-				for command_name, command_info in pairs(player_commands.host) do
-					if command_info.args ~= "none" then
-						d.print("-----\nCommand\n?impwep "..command_name.." "..command_info.args, false, 0, peer_id)
-					else
-						d.print("-----\nCommand\n?impwep "..command_name, false, 0, peer_id)
-					end
-					d.print("Short Description\n"..command_info.short_desc.."\n", false, 0, peer_id)
-				end
-			end
-
-		else -- print data only on the specific command they specified, if it exists
-			local command_exists = false
-			local has_permission = false
-			local command_data = nil
-			for permission_level, command_list in pairs(player_commands) do
-				for command_name, command_info in pairs(command_list) do
-					if command_name == arg[1]then
-						command_exists = true
-						command_data = command_info
-						if
-						permission_level == "admin" and is_admin 
-						or 
-						permission_level == "host" and is_admin and peer_id == 0 
-						or
-						permission_level == "normal"
-						then
-							has_permission = true
-						end
-					end
-				end
-			end
-			if command_exists then -- if the command exists
-				if has_permission then -- if they can execute it
-					if command_data.args ~= "none" then
-						d.print("\nCommand\n?impwep "..arg[1].." "..command_data.args, false, 0, peer_id)
-					else
-						d.print("\nCommand\n?impwep "..arg[1], false, 0, peer_id)
-					end
-					d.print("Description\n"..command_data.desc, false, 0, peer_id)
-					d.print("Example Usage\n"..command_data.example, false, 0, peer_id)
-				else
-					d.print("You do not have permission to use \""..arg[1].."\", contact a server admin if you believe this is incorrect.", false, 1, peer_id)
-				end
-			else
-				d.print("unknown command! \""..arg[1].."\" do \"?impwep help\" to get a list of all valid commands!", false, 1, peer_id)
+			-- write this character if its not a quote
+			elseif char ~= "\"" then
+				str = str..char
 			end
 		end
 	end
 
-	-- if the command they entered exists
-	local is_command = false
-	if command_aliases[command] then
-		is_command = true
+	return table.pack(stringToTable(S, 1))[1]
+end
+
+--- Returns the value at the path in _ENV
+---@param path string the path we want to get the value at
+---@return any value the value at the path, if it reached a nil value in the given path, it will return the value up to that point, and is_success will be false.
+---@return boolean is_success if it successfully got the value at the path
+function table.getValueAtPath(path)
+	if type(path) ~= "string" then
+		d.print(("path must be a string! given path: %s type: %s"):format(path, type(path)), true, 1)
+		return nil, false
+	end
+
+	local cur_path
+	-- if our environment is modified, we will have to make a deep copy under the non-modified environment.
+	if _ENV_NORMAL then
+		cur_path = _ENV_NORMAL.table.copy.deep(_ENV, _ENV_NORMAL)
 	else
-		for permission_level, command_list in pairs(player_commands) do
-			if is_command then break end
-			for command_name, _ in pairs(command_list) do
-				if is_command then break end
-				if string.friendly(command_name, true) == command then
-					is_command = true
+		cur_path = table.copy.deep(_ENV)
+	end
+
+	local cur_path_string = "_ENV"
+
+	for index in string.gmatch(path, "([^%.]+)") do
+		if not cur_path[index] then
+			d.print(("%s does not contain a value indexed by %s, given path: %s"):format(cur_path_string, index, path), false, 1)
+			return cur_path, false
+		end
+
+		cur_path = cur_path[index]
+	end
+
+	return cur_path, true
+end
+
+--- Sets the value at the path in _ENV
+---@param path string the path we want to set the value at
+---@param set_value any the value we want to set the value of what the path is
+---@return boolean is_success if it successfully got the value at the path
+function table.setValueAtPath(path, set_value)
+	if type(path) ~= "string" then
+		d.print(("(table.setValueAtPath) path must be a string! given path: %s type: %s"):format(path, type(path)), true, 1)
+		return false
+	end
+
+	local cur_path = _ENV
+	-- if our environment is modified, we will have to make a deep copy under the non-modified environment.
+	--[[if _ENV_NORMAL then
+		cur_path = _ENV_NORMAL.table.copy.deep(_ENV, _ENV_NORMAL)
+	else
+		cur_path = table.copy.deep(_ENV)
+	end]]
+
+	local cur_path_string = "_ENV"
+
+	local index_count = 0
+
+	local last_index, got_count = string.countCharInstances(path, "%.")
+
+	last_index = last_index + 1
+
+	if not got_count then
+		d.print(("(table.setValueAtPath) failed to get count! path: %s"):format(path))
+		return false
+	end
+
+	for index in string.gmatch(path, "([^%.]+)") do
+		index_count = index_count + 1
+
+		if not cur_path[index] then
+			d.print(("(table.setValueAtPath) %s does not contain a value indexed by %s, given path: %s"):format(cur_path_string, index, path), false, 1)
+			return false
+		end
+
+		if index_count == last_index then
+			cur_path[index] = set_value
+
+			return true
+		end
+
+		cur_path = cur_path[index]
+	end
+
+	d.print("(table.setValueAtPath) never reached end of path?", true, 1)
+	return false
+end
+
+-- a table containing a bunch of functions for making a copy of tables, to best fit each scenario performance wise.
+table.copy = {
+
+	iShallow = function(t, __ENV)
+		__ENV = __ENV or _ENV
+		return {__ENV.table.unpack(t)}
+	end,
+	shallow = function(t, __ENV)
+		__ENV = __ENV or _ENV
+
+		local t_type = __ENV.type(t)
+
+		local t_shallow
+
+		if t_type == "table" then
+			for key, value in __ENV.next, t, nil do
+				t_shallow[key] = value
+			end
+		end
+
+		return t_shallow or t
+	end,
+	deep = function(t, __ENV)
+
+		__ENV = __ENV or _ENV
+
+		local function deepCopy(T)
+			local copy = {}
+			if __ENV.type(T) == "table" then
+				for key, value in __ENV.next, T, nil do
+					copy[deepCopy(key)] = deepCopy(value)
+				end
+			else
+				copy = T
+			end
+			return copy
+		end
+	
+		return deepCopy(t)
+	end
+}
+
+
+---@diagnostic disable:duplicate-doc-field
+---@diagnostic disable:duplicate-doc-alias
+---@diagnostic disable:duplicate-set-field
+
+--[[
+
+	Registers the default variable interaction commands.
+
+]]
+
+-- Get Variable command
+Command.registerCommand(
+	"print_variable",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		local location_string = arg[1]
+
+		local value_at_path, is_success = table.getValueAtPath(location_string)
+
+		if not is_success then
+			d.print(("failed to get value at path %s"):format(location_string), false, 1, peer_id)
+			return
+		end
+
+		d.print(("value of %s: %s"):format(location_string, string.fromTable(value_at_path)), false, 0, peer_id)
+	end,
+	"admin",
+	"Gets the value of a variable. Automatically converts tables to strings.",
+	"Gets the value of a variable.",
+	{"g_savedata", "Command", "g_savedata.tick_counter"}
+)
+
+-- Set Variable command
+Command.registerCommand(
+	"set_variable",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		local location_string = arg[1]
+		local value_to_set_to = arg[2]
+		
+		local is_success = table.setValueAtPath(location_string, value_to_set_to)
+
+		if not is_success then
+			d.print(("failed to set the value at path %s to %s"):format(location_string, value_to_set_to), false, 1, peer_id)
+			return
+		end
+
+		d.print(("set %s to %s"):format(location_string, value_to_set_to), false, 0, peer_id)
+	end,
+	"admin",
+	"Sets the value of a variable. Allowing you to set the value of a variable.",
+	"Sets the value of a variable.",
+	{"g_savedata.tick_counter 0", "g_savedata.is_attack false"}
+)
+
+-- Print Entry Count command
+Command.registerCommand(
+	"print_entry_count",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		-- Get the location string from the user's input.
+		local location_string = arg[1]
+
+		-- Get the value at the path.
+		local value_at_path, is_success = table.getValueAtPath(location_string)
+
+		-- If we failed to get the value at the path, print an error message and return.
+		if not is_success then
+			d.print(("Failed to get value at path %s"):format(location_string), false, 1, peer_id)
+			return
+		end
+
+		-- If the value at the path is not a table, print an error message and return.
+		if type(value_at_path) ~= "table" then
+			d.print(("Value at path %s is not a table"):format(location_string), false, 1, peer_id)
+			return
+		end
+
+		-- Print the element count of the table.
+		d.print(("Entry count of %s: %s"):format(location_string, table.length(value_at_path)), false, 0, peer_id)
+	end,
+	"admin",
+	"Gets the entry count of a table.",
+	"Gets the entry count of a table.",
+	{"g_savedata", "Command", "g_savedata.tick_counter"}
+)
+
+
+-- Add the ICM specific commands not included in their own libraries
+--[[
+	
+Copyright 2025 Liam Matthews
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+]]
+
+-- Library Version 0.0.1
+
+--[[
+
+
+	Library Setup
+
+
+]]
+
+-- required libraries
+
+
+---@diagnostic disable:duplicate-doc-field
+---@diagnostic disable:duplicate-doc-alias
+---@diagnostic disable:duplicate-set-field
+
+--[[
+
+	Registers the commands ported over from the old commands file
+
+]]
+
+
+-- AI Reset command
+Command.registerCommand(
+	"reset",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
+			if squad_index ~= RESUPPLY_SQUAD_INDEX then
+				setSquadCommand(squad, SQUAD.COMMAND.NONE)
+				if squad.command == SQUAD.COMMAND.DEFEND then
+					squad.command = SQUAD.COMMAND.NONE
+				end
+			end
+		end
+		g_is_air_ready = true
+		g_is_boats_ready = false
+		g_savedata.is_attack = false
+		d.print("reset all squads", false, 0, peer_id)
+	end,
+	"admin",
+	"this resets the ai's commands, this is helpful for testing and debugging mostly",
+	"reset's the ai's commands",
+	{""}
+)
+
+-- Speed command
+Command.registerCommand(
+	"speed",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		d.print("set speed multiplier from "..tostring(g_debug_speed_multiplier).." to "..tostring(arg[1]), false, 0, peer_id)
+		g_debug_speed_multiplier = arg[1]
+	end,
+	"admin",
+	"this allows you to change the multiplier of the ai's pseudo speed, with the arg being the amount to times it by",
+	"lets you change ai's pseudo speed",
+	{"5"},
+	"(multiplier)"
+)
+
+-- vreset command
+Command.registerCommand(
+	"vreset",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+        if not arg[1] then
+            d.print("Error: No vehicle group id provided!", false, 0, peer_id)
+            return
+        end
+        if type(arg[1] ) ~= "number" then
+            d.print("Error: Vehicle group id must be a number!", false, 0, peer_id)
+            return
+        end
+		server.resetVehicleState(arg[1])
+	end,
+	"admin",
+	"this lets you reset an ai vehicle's state, such as holding, stationary, ect",
+	"lets you reset an ai's state",
+	{"655"},
+	"(vehicle_id)"
+)
+
+-- Target command
+Command.registerCommand(
+	"target",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
+			for vehicle_id, vehicle_object in pairs(squad.vehicles) do
+				for _, object_id in  pairs(vehicle_object.survivors) do
+					s.setAITargetVehicle(object_id, arg[1])
+				end
+			end
+		end
+	end,
+	"admin",
+	"this lets you change what the ai is targeting, so they will attack it instead",
+	"lets you change the ai's target",
+	{"500"},
+	"(vehicle_id)"
+)
+
+-- Vision reset command
+Command.registerCommand(
+	"visionreset",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		d.print("resetting all squad vision data", false, 0, peer_id)
+		for _, squad in pairs(g_savedata.ai_army.squadrons) do
+			squad.target_players = {}
+			squad.target_vehicles = {}
+		end
+		d.print("reset all squad vision data", false, 0, peer_id)
+	end,
+	"admin",
+	"resets the all squad vision data, this is helpful for testing and debugging",
+	"resets the squad's vision data",
+	{""}
+)
+
+-- Spawn vehicle command
+Command.registerCommand(
+	"spawnvehicle",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		-- if vehicle not specified, spawn random vehicle
+		if not arg[1] then
+			d.print("Spawning Random Enemy AI Vehicle", false, 0, peer_id)
+			v.spawn()
+			return
+		end
+
+		local valid_types = {
+			land = true,
+			plane = true,
+			heli = true,
+			helicopter = true,
+			boat = true
+		}
+
+		local vehicle_id = sm.getVehicleListID(string.gsub(arg[1], "_", " "))
+
+		if not vehicle_id and arg[1] ~= "scout" and arg[1] ~= "cargo" and not valid_types[string.lower(arg[1])] and not arg[1]:match("--count:") then
+			d.print("Was unable to find a vehicle with the name \""..arg[1].."\", use '?impwep vl' to see all valid vehicle names", false, 1, peer_id)
+			return
+		end
+
+		d.print("Spawning \""..arg[1].."\"", false, 0, peer_id)
+
+		if arg[1] == "cargo" then -- they want to spawn a cargo vehicle
+			v.spawn(arg[1])
+		elseif arg[1] == "scout" then -- they want to spawn a scout
+			local scout_exists = false
+
+			-- check if theres already a scout that exists
+			for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
+				for vehicle_index, vehicle in pairs(squad.vehicles) do
+					if vehicle.role == "scout" then
+						scout_exists = true
+						break
+					end
+				end
+
+				if scout_exists then
 					break
 				end
 			end
-		end
-	end
 
-	if not is_command then -- if the command they specified does not exist
-		d.print("unknown command! \""..command.."\" do \"?impwep help\" to get a list of all valid commands!", false, 1, peer_id)
-	end
-end
+			if scout_exists then -- if a scout vehicle already exists
+				d.print("unable to spawn scout vehicle: theres already a scout vehicle!", false, 1, peer_id)
+				return
+			end
+
+			-- spawn scout
+			v.spawn(arg[1])
+
+		else
+
+			--[[
+				look for "--count:" arg, if its there, take the number after :, and remove --count from arguments table
+				if there is none, default to 1
+			]]
+
+			local spawn_count = 1
+			local _, count_end = full_message:find("--count:")
+			if count_end then
+				local _, value_end = full_message:find("[^%d]", count_end + 1)
+
+				-- this could happen if --count: is specified at the end of the string, so we want to deafult it to the length
+				if not value_end then
+					value_end = full_message:len() + 1
+				end
+
+				local value = full_message:sub(count_end + 1, value_end - 1)
+				if not math.tointeger(value) then
+					d.print(("count value has to be a number! given value: %s"):format(value), false, 1, peer_id)
+					goto onCustomCommand_spawnVehicle_countInvalid
+				end
+
+				spawn_count = math.tointeger(value) or 1
+
+				for arg_i = 1, arg.n do
+					if arg[arg_i]:match("--count:"..value) then
+						table.remove(arg, arg_i)
+						arg.n = arg.n - 1
+						break
+					end
+				end
+			end
+
+			::onCustomCommand_spawnVehicle_countInvalid::
+
+			for _ = 1, spawn_count do
+				local vehicle_data = nil
+				local successfully_spawned = false
+
+				if not arg[1] or not valid_types[string.lower(arg[1])] then
+					-- they did not specify a type of vehicle to spawn
+						successfully_spawned, vehicle_data = v.spawn(vehicle_id, nil, true)
+				else
+					-- they specified a type of vehicle to spawn
+						successfully_spawned, vehicle_data = v.spawn(nil, string.lower(arg[1]), true)
+				end
+				if successfully_spawned and type(vehicle_data) == "table" then
+					-- if the player didn't specify where to spawn it
+					if arg[2] == nil then
+						goto onCustomCommand_spawnVehicle_spawnNext
+					end
+
+					if arg[2] == "near" then -- the player selected to spawn it in a range
+						arg[3] = tonumber(arg[3]) or 150
+						arg[4] = tonumber(arg[4]) or 1900
+						if arg[3] >= 150 then -- makes sure the min range is equal or greater than 150
+							if arg[4] >= arg[3] then -- makes sure the max range is greater or equal to the min range
+								if vehicle_data.vehicle_type == VEHICLE.TYPE.BOAT then
+									local player_pos = s.getPlayerPos(peer_id)
+									local new_location, found_new_location = s.getOceanTransform(player_pos, arg[3], arg[4])
+									if found_new_location then
+										-- teleport vehicle to new position
+										v.teleport(vehicle_data.group_id, new_location)
+										d.print("Spawned "..vehicle_data.name.." at x:"..new_location[13].." y:"..new_location[14].." z:"..new_location[15], false, 0, peer_id)
+									else
+										-- delete vehicle as it was unable to find a valid position
+										v.kill(vehicle_data, true, true)
+										d.print("unable to find a valid area to spawn the ship! Try increasing the radius!", false, 1, peer_id)
+									end
+								elseif vehicle_data.vehicle_type == VEHICLE.TYPE.LAND then
+									--[[
+									local possible_islands = {}
+									for island_index, island in pairs(g_savedata.islands) do
+										if island.faction ~= ISLAND.FACTION.PLAYER then
+											if Tags.has(island.tags, "can_spawn=land") then
+												for in pairs(island.zones.land)
+											for g_savedata.islands[island_index]
+											table.insert(possible_islands.)
+										end
+									end
+									--]]
+									d.print("Sorry! As of now you are unable to select a spawn zone for land vehicles! this functionality will be added soon!", false, 1, peer_id)
+									v.kill(vehicle_data, true, true)
+								else
+									local player_pos = s.getPlayerPos(peer_id)
+									vehicle_data.transform[13] = player_pos[13] + math.random(-math.random(arg[3], arg[4]), math.random(arg[3], arg[4])) -- x
+									vehicle_data.transform[14] = vehicle_data.transform[14] * 1.5 -- y
+									vehicle_data.transform[15] = player_pos[15] + math.random(-math.random(arg[3], arg[4]), math.random(arg[3], arg[4])) -- z
+									v.teleport(vehicle_data.group_id, vehicle_data.transform)
+									d.print("Spawned "..vehicle_data.name.." at x:"..vehicle_data.transform[13].." y:"..vehicle_data.transform[14].." z:"..vehicle_data.transform[15], false, 0, peer_id)
+								end
+							else
+								d.print("your maximum range must be greater or equal to the minimum range!", false, 1, peer_id)
+								v.kill(vehicle_data, true, true)
+							end
+						else
+							d.print("the minimum range must be at least 150!", false, 1, peer_id)
+							v.kill(vehicle_data, true, true)
+						end
+					else
+						if tonumber(arg[2]) and tonumber(arg[2]) >= 0 or tonumber(arg[2]) and tonumber(arg[2]) <= 0 then -- the player selected specific coordinates
+							if tonumber(arg[3]) and tonumber(arg[3]) >= 0 or tonumber(arg[3]) and tonumber(arg[3]) <= 0 then
+								if vehicle_data.vehicle_type == VEHICLE.TYPE.BOAT then
+									local new_pos = m.translation(arg[2], 0, arg[3])
+									v.teleport(vehicle_data.group_id, new_pos)
+									vehicle_data.transform = new_pos
+									d.print("Spawned "..vehicle_data.name.." at x:"..arg[2].." y:0 z:"..arg[3], false, 0, peer_id)
+								elseif vehicle_data.vehicle_type == VEHICLE.TYPE.LAND then
+									d.print("sorry! but as of now you are unable to specify the coordinates of where to spawn a land vehicle!", false, 1, peer_id)
+									v.kill(vehicle_data, true, true)
+								else -- air vehicle
+									local new_pos = m.translation(arg[2], CRUISE_HEIGHT * 1.5, arg[3])
+									v.teleport(vehicle_data.group_id, new_pos)
+									vehicle_data.transform = new_pos
+									d.print("Spawned "..vehicle_data.name.." at x:"..arg[2].." y:"..(CRUISE_HEIGHT*1.5).." z:"..arg[3], false, 0, peer_id)
+								end
+							else
+								d.print("invalid z coordinate: "..tostring(arg[3]), false, 1, peer_id)
+								v.kill(vehicle_data, true, true)
+							end
+						else
+							d.print("invalid x coordinate: "..tostring(arg[2]), false, 1, peer_id)
+							v.kill(vehicle_data, true, true)
+						end
+					end
+				else
+					if type(vehicle_data) == "string" then
+						d.print("Failed to spawn vehicle! Error:\n"..vehicle_data, false, 1, peer_id)
+					else
+						d.print("Failed to spawn vehicle!\n(no error code recieved)", false, 1, peer_id)
+					end
+				end
+				::onCustomCommand_spawnVehicle_spawnNext::
+			end
+		end
+	end,
+	"admin",
+	"this lets you spawn in a ai vehicle, if you dont specify one, it will spawn a random ai vehicle, and if you specify \"scout\", it will spawn a scout vehicle if it can spawn. specify x and y to spawn it at a certain location, or \"near\" and then a minimum distance and then a maximum distance",
+	"lets you spawn in an ai vehicle",
+	{"Eurofighter", "Eurofighter -500 500", "Eurofighter near 1000 5000", "heli"},
+	"[vehicle_id|vehicle_type|\"scout\"] [x & y|\"near\" & min_range & max_range] "
+)
+
+-- Teleport vehicle command
+Command.registerCommand(
+	"teleport",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		if not math.tointeger(arg[1]) then
+			d.print("vehicle_id must be a integer!", false, 1, peer_id)
+			return
+		end
+        
+		if not tonumber(arg[2]) then
+			d.print("x coordinate must be a number!", false, 1, peer_id)
+			return
+		end
+
+		if not tonumber(arg[3]) then
+			d.print("y coordinate must be a number!", false, 1, peer_id)
+			return
+		end
+
+		if not tonumber(arg[4]) then
+			d.print("z coordinate must be a number!", false, 1, peer_id)
+			return
+		end
+
+		local new_transform = matrix.translation(tonumber(arg[2]) --[[@as number]], tonumber(arg[3]) --[[@as number]], tonumber(arg[4]) --[[@as number]])
+
+		local is_success = v.teleport(math.tointeger(arg[1]) --[[@as number]], new_transform)
+
+		if is_success then
+			d.print(("Teleported vehicle %s to\nx: %0.1f\ny: %0.1f\nz: %0.1f"):format(arg[1], new_transform[13], new_transform[14], new_transform[15]), false, 0, peer_id)
+		else
+			d.print(("Failed to teleport vehicle %s!"):format(arg[1]), false, 1, peer_id)
+		end
+	end,
+	"admin",
+	"lets you teleport an ai vehicle by vehicle id, to the specified x, y and z",
+	"lets you teleport an ai vehicle",
+	{"50 100 10 -5000"},
+	"(vehicle_id) (x) (y) (z)"
+)
+
+-- Vehicle list command
+Command.registerCommand(
+	"vehiclelist",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		d.print("Valid Vehicles:", false, 0, peer_id)
+		for vehicle_index, vehicle_object in ipairs(g_savedata.vehicle_list) do
+            typeValue = Tags.getValue(vehicle_object.vehicle.tags, "vehicle_type", true)
+            if typeValue ~= nil then
+			    d.print("\nName: \""..string.removePrefix(vehicle_object.location_data.name, true).."\"\nType: "..(string.gsub(typeValue, "wep_", ""):gsub("^%l", string.upper)), false, 0, peer_id)
+            end
+        end
+	end,
+	"admin",
+	"prints a list of all of the AI vehicles in the addon, also shows their formatted name, which is used in commands",
+	"prints a list of all vehicles",
+	{""}
+)
+
+-- Debug command
+Command.registerCommand(
+	"debug",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		if not arg[1] then
+			d.print("You need to specify a type to debug! valid types are: \"all\" | \"chat\" | \"error\" | \"profiler\" | \"map\" | \"graph_node\" | \"driving\"", false, 1, peer_id)
+			return
+		end
+
+        local executer_player_data = pl.dataByPID(peer_id)
+        if not executer_player_data then
+            d.print("ERROR: Unable to find your player data!", false, 1, peer_id)
+            return
+        end
+
+		--* make the debug type arg friendly
+		local selected_debug = string.friendly(arg[1])
+
+		-- turn the specified debug type into its integer index
+		local selected_debug_id = d.debugIDFromType(selected_debug)
+
+		if not selected_debug_id then
+			-- unknown debug type
+			d.print(("Unknown debug type: %s valid types are: \"all\" | \"chat\" | \"error\" | \"profiler\" | \"map\" | \"graph_node\" | \"driving\""):format(tostring(arg[1])), false, 1, peer_id)
+			return
+		end
+
+		-- if they specified a player, then toggle it for that specified player
+		if arg[2] then
+			local specified_peer_id = math.tointeger(arg[2])
+            if not specified_peer_id then
+                d.print("specified peer id must be a integer!", false, 1, peer_id)
+                return
+            end
+
+			local specified_peer_name = pl.dataByPID(specified_peer_id).name
+
+			local debug_output = d.setDebug(selected_debug_id, specified_peer_id)
+
+			-- message to who the player changed it for
+			d.print(("%s %s for you."):format(executer_player_data.name, debug_output), false, 0, specified_peer_id)
+
+			-- message to who changed it for them
+			d.print(("%s for %s."):format(debug_output, specified_peer_name), false, 0, peer_id)
+			-- d.print("unknown peer id: "..specified_peer_id, false, 1, peer_id)
+		else -- if they did not specify a player
+			d.print(d.setDebug(selected_debug_id, peer_id), false, 0, peer_id)
+		end
+	end,
+	"admin",
+	"lets you toggle debug mode, also shows all the AI vehicles on the map with tons of info valid debug types: \"all\", \"chat\", \"profiler\" and \"map\"",
+	"enables or disables debug mode",
+	{"all", "map"},
+	"(debug_type) [peer_id]"
+)
+
+-- spawnturret command
+Command.registerCommand(
+	"spawnturret",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		local turrets_spawned = 0
+		-- spawn at ai's main base
+		local spawned, vehicle_data = v.spawn("turret", "turret", true, g_savedata.ai_base_island)
+		if spawned then
+			turrets_spawned = turrets_spawned + 1
+		else
+			d.print("Failed to spawn a turret on island "..g_savedata.ai_base_island.name.."\nError:\n"..vehicle_data, true, 1)
+		end
+		-- spawn at enemy ai islands
+		for island_index, island in pairs(g_savedata.islands) do
+			if island.faction == ISLAND.FACTION.AI then
+				local spawned, vehicle_data = v.spawn("turret", "turret", true, island)
+				if spawned then
+					turrets_spawned = turrets_spawned + 1
+				else
+					d.print("Failed to spawn a turret on island "..island.name.."\nError:\n"..vehicle_data, true, 1)
+				end
+			end
+		end
+		d.print("spawned "..turrets_spawned.." turret"..(turrets_spawned ~= 1 and "s" or ""), false, 0, peer_id)
+	end,
+	"admin",
+	"spawns a turret at every enemy AI island",
+	"spawns a turret at every enemy AI island",
+	{""}
+)
+
+-- capturepoint command
+Command.registerCommand(
+	"capturepoint",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		if arg[1] and arg[2] then
+			local is_island = false
+			for island_index, island in pairs(g_savedata.islands) do
+				if island.name == string.gsub(arg[1], "_", " ") then
+					is_island = true
+					if island.faction ~= arg[2] then
+						if arg[2] == ISLAND.FACTION.AI or arg[2] == ISLAND.FACTION.NEUTRAL or arg[2] == ISLAND.FACTION.PLAYER then
+							captureIsland(island, arg[2], peer_id)
+						else
+							d.print(arg[2].." is not a valid faction! valid factions: | ai | neutral | player", false, 1, peer_id)
+						end
+					else
+						d.print(island.name.." is already set to "..island.faction..".", false, 1, peer_id)
+					end
+				end
+			end
+			if not is_island then
+				d.print(arg[1].." is not a valid island! Did you replace spaces with _?", false, 1, peer_id)
+			end
+		else
+			d.print("Invalid Syntax! command usage: ?impwep cp (island_name) (faction)", false, 1, peer_id)
+		end
+	end,
+	"admin",
+	"allows you to change who owns a specific island",
+	"allows you to change who owns a point",
+	{"North_Harbour ai"},
+	"(island_name) (\"ai\"|\"neutral\"|\"player\")"
+)
+
+-- aimod command
+Command.registerCommand(
+	"aimod",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		if arg[1] then
+			sm.debug(peer_id, arg[1], arg[2], arg[3], arg[4])
+		else
+			d.print("you need to specify which type to debug!", false, 1, peer_id)
+		end
+	end,
+	"admin",
+	"lets you see what an ai's role, type, strategy or vehicle's spawning modifier is",
+	"lets you get an ai's spawning modifier",
+	{"attack heli general 0"},
+	"(role) [type] [strategy] [constructable_vehicle_id]"
+)
+
+--setmod command
+Command.registerCommand(
+	"setmod",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+        -- Input validation
+		if not arg[1] then
+            d.print("You need to specify wether to punish or reward!", false, 1, peer_id)
+            return
+        end
+        if arg[1] ~= "punish" and arg[1] ~= "reward" then
+            d.print("Unknown reinforcement type: "..arg[1].." valid reinforcement types: \"punish\" and \"reward\"", false, 1, peer_id)
+            return
+        end
+        if not arg[2] then
+            d.print("You need to specify which role to set!", false, 1, peer_id)
+            return
+        end
+        if not (g_savedata.constructable_vehicles[arg[2]] and g_savedata.constructable_vehicles[arg[2]].mod) then
+            d.print("Unknown role: "..arg[2], false, 1, peer_id)
+            return
+        end
+        if tonumber(arg[3]) == nil then
+            d.print("Incorrect syntax! "..arg[3].." has to be a number from 1-5!", false, 1, peer_id)
+            return
+        end
+
+        -- Set the mod
+        if arg[1] == "punish" then
+			if ai_training.punishments[tonumber(arg[3])] then
+				g_savedata.constructable_vehicles[arg[2]].mod = g_savedata.constructable_vehicles[arg[2]].mod + ai_training.punishments[tonumber(arg[3])]
+				d.print("Successfully set role "..arg[2].." to modifier: "..g_savedata.constructable_vehicles[arg[2]].mod, false, 0, peer_id)
+			else
+				d.print("Incorrect syntax! "..arg[3].." has to be a number from 1-5!", false, 1, peer_id)
+			end
+		elseif arg[1] == "reward" then
+			if ai_training.rewards[tonumber(arg[3])] then
+				g_savedata.constructable_vehicles[arg[2]].mod = g_savedata.constructable_vehicles[arg[2]].mod + ai_training.rewards[tonumber(arg[3])]
+				d.print("Successfully set role "..arg[2].." to modifier: "..g_savedata.constructable_vehicles[arg[2]].mod, false, 0, peer_id)
+			else
+				d.print("Incorrect syntax! "..arg[3].." has to be a number from 1-5!", false, 1, peer_id)
+			end
+		end
+	end,
+	"admin",
+	"lets you change what the ai's role spawning modifier is, does not yet support type, strategy or constructable vehicle id",
+	"lets you change an ai's spawning modifier",
+	{"reward attack 4"},
+	"(\"reward\"|\"punish\") (role) (modifier: 1-5)"
+)
+
+-- Delete vehicle command
+Command.registerCommand(
+	"deletevehicle",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		if not arg[1] then
+            d.print("Invalid syntax! You must either choose a vehicle id, or \"all\" to remove all enemy AI vehicles", false, 1, peer_id) 
+            return
+        end
+
+        if arg[1] == "all" or arg[1] == "damaged" then
+            local vehicle_counter = 0
+            for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
+                for vehicle_id, vehicle_object in pairs(squad.vehicles) do
+                    if arg[1] ~= "damaged" or arg[1] == "damaged" and vehicle_object.current_damage > 0 then
+
+                        -- refund the cargo to the island which was sending the cargo
+                        Cargo.refund(vehicle_id)
+
+                        v.kill(vehicle_object, true, true)
+                        vehicle_counter = vehicle_counter + 1
+                    end
+                end
+            end
+            if vehicle_counter == 0 then
+                d.print("There are no enemy AI vehicles to remove", false, 0, peer_id)
+            elseif vehicle_counter == 1 then
+                d.print("Removed "..vehicle_counter.." enemy AI vehicle", false, 0, peer_id)
+            elseif vehicle_counter > 1 then
+                d.print("Removed "..vehicle_counter.." enemy AI vehicles", false, 0, peer_id)
+            end
+        else
+            local vehicle_id = math.tointeger(arg[1])
+            if not vehicle_id then
+                d.print("vehicle_id must be a integer!", false, 1, peer_id)
+                return
+            end
+            local vehicle_object, _, _ = Squad.getVehicle(vehicle_id)
+
+            if vehicle_object then
+
+                -- refund the cargo to the island which was sending the cargo
+                Cargo.refund(vehicle_id)
+
+                v.kill(vehicle_object, true, true)
+                d.print("Sucessfully deleted vehicle "..arg[1].." name: "..vehicle_object.name, false, 0, peer_id)
+            else
+                d.print("Unable to find vehicle with id "..arg[1]..", double check the ID!", false, 1, peer_id)
+            end
+        end
+	end,
+	"admin",
+	"lets you delete an ai vehicle by vehicle id, or all by specifying \"all\", or all vehicles that have been damaged by specifying \"damaged\"",
+	"lets you delete an ai vehicle",
+	{"all"},
+	"(vehicle_id|\"all\"|\"damaged\")"
+)
+
+-- Scout Island command
+Command.registerCommand(
+	"scoutintel",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		-- Input validation
+        if not arg[1] then
+            d.print("Invalid syntax! you must specify the island and the scout level (0-100) to set it to!", false, 1, peer_id)
+            return
+        end
+        if not arg[2] then
+            d.print("Invalid syntax! you must specify the scout level to set it to (0-100)", false, 1, peer_id)
+            return
+        end
+        local scout_level = tonumber(arg[2])
+        if not scout_level then
+            d.print("Arg 2 has to be a number! Unknown value: "..arg[2], false, 1, peer_id)
+            return
+        end
+        local chosen_island = g_savedata.ai_knowledge.scout[string.gsub(arg[1], "_", " ")]
+        if not chosen_island then
+            d.print("Unknown island: "..string.gsub(arg[1], "_", " "), false, 1, peer_id)
+            return
+        end
+
+        -- Set the new scout level
+        chosen_island.scouted = (math.clamp(scout_level, 0, 100)/100) * scout_requirement
+
+        -- Announce the change to the players
+        local name = s.getPlayerName(peer_id)
+        s.notify(-1, "(Improved Conquest Mode) Scout Level Changed", name.." set "..arg[2].."'s scout level to "..(g_savedata.ai_knowledge.scout[string.gsub(arg[1], "_", " ")].scouted/scout_requirement*100).."%", 1)
+	end,
+	"admin",
+	"lets you set the ai's scout level on a specific island, from 0 to 100 for 0% scouted to 100% scouted",
+	"lets you set the ai's scout level",
+	{"North_Harbour 100"},
+	"(island_name) (0-100)"
+)
+
+-- Setting command
+Command.registerCommand(
+	"setting",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+        local executer_player_data = pl.dataByPID(peer_id)
+        if not executer_player_data then
+            d.print("ERROR: Unable to find your player data!", false, 1, peer_id)
+            return
+        end
+
+		if not arg[1] then
+            -- we want to print a list of all settings they can change
+            d.print("\nAll Improved Conquest Mode Settings", false, 0, peer_id)
+            for setting_name, setting_value in pairs(g_savedata.settings) do
+                d.print("-----\nSetting Name: "..setting_name.."\nSetting Type: "..type(setting_value), false, 0, peer_id)
+            end
+        elseif g_savedata.settings[arg[1]] ~= nil then -- makes sure the setting they selected exists
+            if not arg[2] then
+                -- print the current value of the setting they selected
+                local current_value = g_savedata.settings[arg[1]]
+
+                --? if this has a index in the rules for settings, if this is a number, and if the multiplier is not nil
+                if RULES.SETTINGS[arg[1]] and tonumber(current_value) and RULES.SETTINGS[arg[1]].input_multiplier then
+                    current_value = math.noNil(current_value / RULES.SETTINGS[arg[1]].input_multiplier)
+                end
+
+                d.print(arg[1].."'s current value: "..tostring(current_value), false, 0, peer_id)
+            else
+                -- change the value of the setting they selected
+                if type(g_savedata.settings[arg[1]]) == "number" then
+                    if tonumber(arg[2]) then
+
+                        arg[2] = tonumber(arg[2])
+                        
+                        local input_multiplier = 1
+
+                        if RULES.SETTINGS[arg[1]] then
+                            --? if theres an input multiplier
+                            if RULES.SETTINGS[arg[1]].input_multiplier then
+                                input_multiplier = RULES.SETTINGS[arg[1]].input_multiplier
+                                arg[2] = math.noNil(arg[2] * input_multiplier)
+                            end
+                            
+                            --? if theres a set minimum, if this input is below the minimum and if the player did not yet acknowledge this
+                            if RULES.SETTINGS[arg[1]].min and arg[2] <= RULES.SETTINGS[arg[1]].min.value and not executer_player_data.acknowledgements[arg[1]] then
+                                
+                                --* set that they've acknowledged this
+                                if not executer_player_data.acknowledgements[arg[1]] then
+                                    executer_player_data.acknowledgements[arg[1]] = {
+                                        min = true,
+                                        max = false
+                                    }
+                                else
+                                    executer_player_data.acknowledgements[arg[1]].min = true
+                                end
+
+                                d.print("Warning: setting "..arg[1].." to or below "..RULES.SETTINGS[arg[1]].min.value.." can result in "..RULES.SETTINGS[arg[1]].min.message.." Re-enter the command to acknowledge this and proceed anyways.", false, 1, peer_id)
+                                return
+                            end
+
+                            --? if theres a set maximum, if this input is above or equal to the maximum and if the player did not yet acknowledge this
+                            if RULES.SETTINGS[arg[1]].max and arg[2] >= RULES.SETTINGS[arg[1]].max.value and not executer_player_data.acknowledgements[arg[1]] then
+                                
+                                --* set that they've acknowledged this
+                                if not executer_player_data.acknowledgements[arg[1]] then
+                                    executer_player_data.acknowledgements[arg[1]] = {
+                                        min = false,
+                                        max = true
+                                    }
+                                else
+                                    executer_player_data.acknowledgements[arg[1]].max = true
+                                end
+                                d.print("Warning: setting a value to or above "..RULES.SETTINGS[arg[1]].max.value.." can result in "..RULES.SETTINGS[arg[1]].max.message.." Re-enter the command to acknowledge this and proceed anyways.", false, 1, peer_id)
+                                return
+                            end
+                        end
+
+                        d.print(s.getPlayerName(peer_id).." has changed the setting "..arg[1].." from "..math.noNil(g_savedata.settings[arg[1]]/input_multiplier).." to "..(arg[2]/input_multiplier), false, 0, -1)
+
+                        ----
+                        -- special things to do whenever settings are changed
+                        ----
+
+
+                        if arg[1] == "CAPTURE_TIME" and arg[2] ~= 0 and g_savedata.settings[arg[1]] ~= 0 then
+                            -- if this is changing the capture timer, then re-adjust all of the capture timers for each island
+
+                            for island_index, island in pairs(g_savedata.islands) do
+                                island.capture_timer = island.capture_timer * (arg[2] / g_savedata.settings[arg[1]])
+                            end
+                        end
+
+                        g_savedata.settings[arg[1]] = arg[2]
+                    else
+                        d.print(arg[2].." is not a valid value! it must be a number!", false, 1, peer_id)
+                    end
+                elseif g_savedata.settings[arg[1]] == true or g_savedata.settings[arg[1]] == false then
+                    if arg[2] == "true" then
+                        d.print(s.getPlayerName(peer_id).." has changed the setting "..arg[1].." from "..tostring(g_savedata.settings[arg[1]]).." to "..arg[2], false, 0, -1)
+                        g_savedata.settings[arg[1]] = true
+                    elseif arg[2] == "false" then
+                        d.print(s.getPlayerName(peer_id).." has changed the setting "..arg[1].." from "..tostring(g_savedata.settings[arg[1]]).." to "..arg[2], false, 0, -1)
+                        g_savedata.settings[arg[1]] = false
+
+                        if arg[1] == "CARGO_MODE" and arg[2] == false then
+                            -- if cargo mode was disabled, remove all active convoys
+                            
+                            for cargo_vehicle_id, cargo_vehicle in pairs(g_savedata.cargo_vehicles) do
+
+                                -- kill cargo vehicle
+                                v.kill(cargo_vehicle.vehicle_data, true, true)
+
+                                -- reset the squad's command
+                                local squad_index, _ = Squad.getSquad(cargo_vehicle.vehicle_data)
+                                g_savedata.ai_army.squadrons[squad_index].command = SQUAD.COMMAND.NONE
+                            end
+                        end
+                    else
+                        d.print(arg[2].." is not a valid value! it must be either \"true\" or \"false\"!", false, 1, peer_id)
+                    end
+                else
+                    d.print("g_savedata.settings."..arg[1].." is not a number or a boolean! please report this as a bug! Value of g_savedata.settings."..arg[1]..":"..g_savedata.settings[arg[1]], false, 1, peer_id)
+                end
+            end
+        else 
+            -- the setting they selected does not exist
+            d.print(arg[1].." is not a valid setting! do \"?impwep setting\" to get a list of all settings!", false, 1, peer_id)
+        end
+	end,
+	"admin",
+	"if you do not input the setting name, it will show a list of all valid settings, if you input a setting name but not a value, it will tell you the setting's current value, if you enter both the setting name and the setting value, it will change that setting to that value",
+	"lets you change or get a specific setting and can get a list of all settings",
+	{"MAX_BOAT_AMOUNT 5", "MAX_BOAT_AMOUNT", ""},
+	"[setting_name] [value]"
+)
+
+-- Ai Knowledge command
+Command.registerCommand(
+	"aiknowledge",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		local vehicles = sm.getStats()
+
+        if vehicles.best[1].mod == vehicles.worst[1].mod then
+            d.print("the adaptive AI doesn't know anything about you! all vehicles currently have the same chance to spawn.", false, 0, peer_id)
+        else
+            d.print("Top 3 vehicles the ai thinks is effective against you:", false, 0, peer_id)
+            for _, vehicle_data in ipairs(vehicles.best) do
+                d.print(_..": "..vehicle_data.name.." ("..vehicle_data.mod..")", false, 0, peer_id)
+            end
+            d.print("Bottom 3 vehicles the ai thinks is effective against you:", false, 0, peer_id)
+            for _, vehicle_data in ipairs(vehicles.worst) do
+                d.print(_..": "..vehicle_data.name.." ("..vehicle_data.mod..")", false, 0, peer_id)
+            end
+        end
+	end,
+	"admin",
+	"shows the 3 vehicles it thinks is good against you, and the 3 that it thinks is weak against you",
+	"shows the 3 vehicles it thinks is good against you",
+	{""}
+)
+
+-- addoninfo command
+-- command for debugging things such as why the addon name is broken
+Command.registerCommand(
+	"addoninfo",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		d.print("---- addon info ----", false, 0, peer_id)
+
+        -- get the addon name
+        local addon_name = "Improved Conquest Mode (".. string.match(ADDON_VERSION, "(%d%.%d%.%d)")..(IS_DEVELOPMENT_VERSION and ".dev)" or ")")
+
+        -- addon index
+        local true_addon_index, true_is_success = s.getAddonIndex(addon_name)
+        local addon_index, is_success = s.getAddonIndex()
+        d.print("addon_index: "..tostring(addon_index).." | "..tostring(true_addon_index).."\nsuccessfully found addon_index: "..tostring(is_success).." | "..tostring(true_is_success), false, 0, peer_id)
+
+        -- addon data
+        local true_addon_data = s.getAddonData(true_addon_index)
+        local addon_data = s.getAddonData(addon_index)
+        d.print("file_store: "..tostring(addon_data.file_store).." | "..tostring(true_addon_data.file_store).."\nlocation_count: "..tostring(addon_data.location_count).." | "..tostring(true_addon_data.location_count).."\naddon_name: "..tostring(addon_data.name).." | "..tostring(true_addon_data.name).."\npath_id: "..tostring(addon_data.path_id).." | "..tostring(true_addon_data.path_id), false, 0, peer_id)
+	end,
+	"admin",
+	"",
+	"",
+	{""}
+)
+
+-- Reset Prefabs command
+Command.registerCommand(
+	"resetprefabs",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		g_savedata.prefabs = {}
+		d.print("reset all prefabs", false, 0, peer_id)
+	end,
+	"admin",
+	"",
+	"",
+	{""}
+)
+
+-- Debug migration command
+Command.registerCommand(
+	"debugmigration",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		d.print("is migrated? "..tostring(g_savedata.info.version_history ~= nil), false, 0, peer_id)
+	end,
+	"admin",
+	"",
+	"",
+	{""}
+)
+
+-- Airvehicleskamikaze command
+Command.registerCommand(
+	"airvehicleskamikaze",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		g_air_vehicles_kamikaze = not g_air_vehicles_kamikaze
+		d.print(("g_air_vehicles_kamikaze set to %s"):format(tostring(g_air_vehicles_kamikaze)))
+	end,
+	"admin",
+	"forces all air vehicles to have their target coordinates set to the target's position, when they have a target.",
+	"kamikaze.",
+	{""}
+)
+
+-- Get memory usuage command
+Command.registerCommand(
+	"getmemusage",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		if not collectgarbage then
+            d.print("The game does not have collectgarbage() injected, unable to get memory usage.", false, 1, peer_id)
+        else
+            d.print(("Lua is using %0.0fkb of memory."):format(collectgarbage("count")), false, 0, peer_id)
+        end
+	end,
+	"admin",
+	"returns how much memory the lua environment is using, this requires a modified version of sw which has the base lua functions injected.",
+	"returns memory usage of this addon",
+	{""}
+)
+
+-- Cause error command
+Command.registerCommand(
+	"causeerror",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		local function_path = arg[1]
+        if not function_path then
+            d.print("You need to specify a function path!", false, 1, peer_id)
+            return
+        end
+
+        local value_at_path, got_path = table.getValueAtPath(function_path)
+
+        if not got_path then
+            d.print(("failed to get path. returned value:\n%s"):format(string.fromTable(value_at_path)), false, 1, peer_id)
+            return
+        end
+
+        if type(value_at_path) ~= "function" then
+            d.print(("value at path is not a function! returned type: %s, returned value:\n%s"):format(type(value_at_path), string.fromTable(value_at_path)), false, 1, peer_id)
+        end
+
+        d.print(("Warning, %s set function %s to cause an error when its called."):format(s.getPlayerName(peer_id), function_path), false, 0, -1)
+
+        local value_at_path = table.copy.deep(value_at_path)
+
+        local value_was_set = table.setValueAtPath(function_path, function(...)
+            return (function(...)
+                local x = nil + nil
+                return ...
+            end)(value_at_path(...))
+        end)
+
+        if not value_was_set then
+            d.print("Failed to set the function!", false, 1, peer_id)
+            return
+        end
+
+        d.print(("successfully set the function %s to cause an error when its called."):format(function_path), false, 0, peer_id)
+	end,
+	"admin",
+	"causes an error when the specified function is called. Useful for debugging the traceback debug, or trying to reproduce an error.",
+	"causes an error when the specified function is called.",
+	{"math.euclideanDistance"},
+	"<function_name>"
+)
+
+-- print traceback command
+Command.registerCommand(
+	"printtraceback",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		-- swap to normal env to avoid a self reference loop
+        local __ENV = _ENV_NORMAL
+        __ENV._ENV_MODIFIED = _ENV
+        _ENV = __ENV
+
+        d.trace.print()
+
+        -- swap back to modified environment
+        _ENV = _ENV_MODIFIED
+	end,
+	"admin",
+	"",
+	"",
+	{""}
+)
+
+-- Execute command
+Command.registerCommand(
+	"execute",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		local location_string = arg[1]
+        local value = arg[2]
+
+        --local _, index_count = location_string:gsub("%.", ".")
+
+        -- make sure its not a function call
+        --if location_string:match("%(") then
+            --[[if location_string:match("onCustomCommand") then
+                d.print("Hey, I see what you're trying to do there...", false, 1, peer_id)
+                goto onCustomCommand_execute_fail
+            end]]
+            --d.print("sorry, but the execute command does not yet support calling functions.", false, 1, peer_id)
+            --goto onCustomCommand_execute_fail
+        --end
+
+        --[[local selected_variable = _ENV
+        local built_path = ""
+        local index_depth = 0
+        for index, _ in location_string:gmatch("[%w_]+") do
+            if type(selected_variable) == "table" then
+                if index_depth == index_count and arg.n == 2 then
+                    if value == "true" then
+                        value = true
+                    elseif value == "false" then
+                        value = false
+                    elseif arg.n == 2 and not value then
+                        value = nil
+                    elseif tonumber(value) then
+                        value = tonumber(value)
+                    else
+                        value = value:gsub("\"", "")
+                    end
+                    selected_variable[index] = value
+                    break
+                end
+
+                selected_variable = selected_variable[index]
+            end
+
+            index_depth = index_depth + 1
+        end]]
+
+        local value_at_path, is_success = table.getValueAtPath(location_string)
+
+        if not is_success then
+            d.print(("failed to get value at path %s"):format(location_string), false, 1, peer_id)
+            goto onCustomCommand_execute_fail
+        end
+
+
+        if arg.n == 2 then
+
+            local is_success = table.setValueAtPath(location_string, value)
+
+            if not is_success then
+                d.print(("failed to set the value at path %s to %s"):format(location_string, value), false, 1, peer_id)
+                goto onCustomCommand_execute_fail
+            end
+
+            d.print(("set %s to %s"):format(location_string, value), false, 0, peer_id)
+        else
+            d.print(("value of %s: %s"):format(location_string, string.fromTable(value_at_path)), false, 0, peer_id)
+        end
+
+        ::onCustomCommand_execute_fail::
+	end,
+	"admin",
+	"allows you to get or set global variables, and call global functions with specified arguments.",
+	"allows you to get, set or call global variables.",
+	{"g_savedata.debug.traceback.enabled", "g_savedata.debug.traceback.debug true", "sm.train(\"reward\",\"attack\",5)"},
+	"(address)[(\"(\"function_args\")\") value]"
+)
+
+-- Ignite command
+Command.registerCommand(
+	"ignite",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		local function igniteVehicle(vehicle_id)
+            local vehicle_pos, got_pos = server.getVehiclePos(vehicle_id)
+            if not got_pos then
+                d.print(("%s is not a vehicle!"):format(vehicle_id), false, -1, peer_id)
+                return
+            end
+
+            local is_loaded = server.getVehicleSimulating(vehicle_id)
+
+            if not is_loaded then
+                d.print(("%s is not loaded!"):format(vehicle_id), false, 1, peer_id)
+                return
+            end
+
+            server.spawnFire(vehicle_pos, tonumber(arg[2]) or 1, 0, true, false, vehicle_id, 0)
+        end
+        if arg[1] == "all" then
+            for _, squad in pairs(g_savedata.ai_army.squadrons) do
+                for _, vehicle_object in pairs(squad.vehicles) do
+                    if vehicle_object.state.is_simulating then
+                        igniteVehicle(vehicle_object.group_id)
+                    end
+                end
+            end
+        elseif tonumber(arg[1]) then
+            igniteVehicle(tonumber(arg[1]))
+        else
+            d.print(("Your specified argument %s is not a vehicle id or \"all\", do ?icm help ignite for help on how to use this command!"):format(arg[1]), false, 1, peer_id)
+        end
+	end,
+	"admin",
+	"allows you to ignite one or many ai vehicles by spawning a fire on them.",
+	"allows you to ignite an ai vehicle",
+	{"all", "102 10"},
+	"(vehicle_id)|\"all\" [size]"
+)
+
+
  -- the command library -- the flag command library
 --[[
 
@@ -5297,6 +6215,37 @@ function Cache.exists(location)
 	d.print("g_savedata.Cache."..location.." doesn't exist", true, 0)
 	return false
 end
+
+-- Define commands related to cache
+Command.registerCommand(
+	"clearcache",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		d.print("clearing cache", false, 0, peer_id)
+		Cache.reset()
+		d.print("cache reset", false, 0, peer_id)
+	end,
+	"admin",
+	"",
+	"",
+	{""}
+)
+
+Command.registerCommand(
+	"debugcache",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		d.print("Cache Writes: "..g_savedata.cache_stats.writes.."\nCache Failed Writes: "..g_savedata.cache_stats.failed_writes.."\nCache Reads: "..g_savedata.cache_stats.reads, false, 0, peer_id)
+	end,
+	"admin",
+	"",
+	"",
+	{""}
+)
  -- functions relating to the custom 
 --[[
 
@@ -5881,7 +6830,7 @@ end
 
 --# migrates the version system to the new one implemented in 0.3.0.78
 ---@param overwrite_g_savedata boolean if you want to overwrite g_savedata, usually want to keep false unless you've already got a backup of g_savedata
----@return table migrated_g_savedata
+---@return table? migrated_g_savedata
 ---@return boolean is_success if it successfully migrated the versioning system
 function Compatibility.migrateVersionSystem(overwrite_g_savedata)
 
@@ -5930,7 +6879,7 @@ end
 
 --# returns the version id from the provided version
 ---@param version string the version you want to get the id of
----@return integer version_id the id of the version
+---@return integer? version_id the id of the version
 ---@return boolean is_success if it found the id of the version
 function Compatibility.getVersionID(version)
 	--[[
@@ -5981,7 +6930,7 @@ end
 
 --# returns the version from the version_id
 ---@param version_id integer the id of the version
----@return string version the version associated with the id
+---@return string? version the version associated with the id
 ---@return boolean is_success if it successfully got the version from the id
 function Compatibility.getVersion(version_id)
 
@@ -6002,8 +6951,8 @@ function Compatibility.getVersion(version_id)
 end
 
 --# returns version data about the specified version, or if left blank, the current version
----@param version string the current version, leave blank if want data on current version
----@return VERSION_DATA version_data the data about the version
+---@param version string? the current version, leave blank if want data on current version
+---@return VERSION_DATA? version_data the data about the version
 ---@return boolean is_success if it successfully got the version data
 function Compatibility.getVersionData(version)
 
@@ -6028,8 +6977,8 @@ function Compatibility.getVersionData(version)
 
 	-- (1) check if the version system is not migrated
 	if not g_savedata.info.version_history then
-		local migrated_g_savedata, is_success = comp.migrateVersionSystem() -- migrate the version data
-		if not is_success then
+		local migrated_g_savedata, is_success = comp.migrateVersionSystem(false) -- migrate the version data
+		if not is_success or migrated_g_savedata == nil then
 			d.print("(comp.getVersionData) failed to migrate version system. This is probably not good!", false, 1)
 			return nil, false
 		end
@@ -6124,6 +7073,10 @@ function Compatibility.saveBackup()
 	end
 
 	local version_data, is_success = comp.getVersionData()
+	if version_data == nil or not is_success then
+		d.print("(comp.saveBackup) failed to get version data. This is probably not good!", false, 1)
+		return false
+	end
 	if version_data.data_version ~= g_savedata.info.version_history[#g_savedata.info.version_history].version then
 		--d.print("version_data.data_version: "..tostring(version_data.data_version).."\ng_savedata.info.version_history[#g_savedata.info.version.version_history].version: "..tostring(g_savedata.info.version_history[#g_savedata.info.version_history].version))
 		g_savedata.info.version_history[#g_savedata.info.version_history + 1] = comp.createVersionHistoryData()
@@ -6162,7 +7115,7 @@ function Compatibility.update()
 
 	-- ensure that we're actually outdated before proceeding
 	local version_data, is_success = comp.getVersionData()
-	if not is_success then
+	if not is_success or version_data == nil then
 		d.print("(comp.update) failed to get version data! this is probably bad!", false, 1)
 		return
 	end
@@ -6411,7 +7364,7 @@ function Compatibility.verify()
 		-- check if we're outdated
 		local version_data, is_success = comp.getVersionData()
 
-		if not is_success then
+		if not is_success or version_data == nil then
 			d.print("(comp.verify) failed to get version data! this is probably bad!", false, 1)
 			return
 		end
@@ -8107,8 +9060,6 @@ function Vehicle.getSpeed(vehicle_object, ignore_terrain_type, ignore_aggressive
 			else
 				terrain_type = v.getTerrainType(vehicle_object.transform)
 			end
-
-			local _, squad = Squad.getSquad(vehicle_object.group_id)
 			
 			local aggressive = aggressiveness_override or not ignore_aggressiveness and squad.command == SQUAD.COMMAND.ENGAGE
 			if aggressive then
@@ -10703,6 +11654,102 @@ function Cargo.reset(island, cargo_type)
 
 	return true, "reset"
 end
+
+-- Define commands related to cargo
+Command.registerCommand(
+	"resetcargo",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		local was_reset, error = Cargo.reset(is.getDataFromName(arg[1]), string.friendly(arg[2]))
+        if was_reset then
+            d.print("Reset the cargo storages for all islands", false, 0, peer_id)
+        else
+            d.print("Cargo failed to reset! error: "..error, false, 1, peer_id)
+        end
+	end,
+	"admin",
+	"resets the all island cargo storages to 0 for each resource, leave island blank for all islands, leave cargo_type blank for all resources",
+	"resets the ai's cargo storages",
+	{"", "North_Harbour", "Garrison_Toddy oil"},
+	"[island] [cargo_type]"
+)
+
+-- Queue convoy command
+Command.registerCommand(
+	"queueconvoy",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		g_savedata.tick_extensions.cargo_vehicle_spawn = RULES.LOGISTICS.CARGO.VEHICLES.spawn_time - g_savedata.tick_counter - 1
+		d.print("Updated convoy tick extension so a convoy will spawn when possible.", false, 0, peer_id)
+	end,
+	"admin",
+	"queues a convoy to be sent out, will be sent out once theres not any convoys",
+	"queues a convoy",
+	{""}
+)
+
+Command.registerCommand(
+	"debugcargo1",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		d.print("asking cargo to do things...(get island distance)", false, 0, peer_id)
+        for island_index, island in pairs(g_savedata.islands) do
+            if island.faction == ISLAND.FACTION.AI then
+                Cargo.getIslandDistance(g_savedata.ai_base_island, island)
+            end
+        end
+	end,
+	"admin",
+	"Debugging command which has Cargo calculate the distance for every island from the AI base",
+	"Debugging command for cargo distance calculations",
+	{""}
+)
+
+Command.registerCommand(
+	"debugcargo2",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		d.print("asking cargo to do things...(get best route)", false, 0, peer_id)
+		if arg[1] == nil then
+			d.print("Missing island id argument!", false, 0, peer_id)
+			return
+		end
+		if tonumber(arg[1]) == nil then
+			d.print("Island ID must be a number!", false, 0, peer_id)
+			return
+		end
+        island_selected = g_savedata.islands[tonumber(arg[1])]
+        if island_selected then
+            d.print("selected island index: "..island_selected.index, false, 0, peer_id)
+            local best_route = Cargo.getBestRoute(g_savedata.ai_base_island, island_selected)
+            if best_route[1] then
+                d.print("first transportation method: "..best_route[1].transport_method, false, 0, peer_id)
+            else
+                d.print("unable to find cargo route!", false, 0, peer_id)
+            end
+            if best_route[2] then
+                d.print("second transportation method: "..best_route[2].transport_method, false, 0, peer_id)
+            end
+            if best_route[3] then
+                d.print("third transportation method: "..best_route[3].transport_method, false, 0, peer_id)
+            end
+        else
+            d.print("incorrect island id: "..arg[1], false, 0, peer_id)
+        end
+	end,
+	"admin",
+	"Runs Cargo.getBestRoute for the given island id and prints the calculated route",
+	"Prints the best cargo route from the AI base to the given island id",
+	{""}
+)
  -- functions relating to the Convoys and Cargo Vehicles -- functions relating to islands -- functions for the main objectives. -- functions relating to the Adaptive AI -- functions for squads
 --[[
 	
@@ -15666,7 +16713,7 @@ function tickCargoVehicles(game_ticks)
 end
 
 function tickControls(game_ticks)
-	d.startProfiler("tickControls()", true, "onTick()")
+	d.startProfiler("tickControls()", true)
 	local control_started = s.getTimeMillisec()
 	for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
 		for group_id, vehicle_object in pairs(squad.vehicles) do

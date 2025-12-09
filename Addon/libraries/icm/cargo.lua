@@ -11,6 +11,7 @@ require("libraries.addon.components.tags")
 require("libraries.addon.script.debugging")
 require("libraries.addon.script.matrix")
 require("libraries.addon.script.pathfinding")
+require("libraries.addon.commands.command.command")
 
 require("libraries.icm.objective")
 require("libraries.icm.squad")
@@ -1580,3 +1581,99 @@ function Cargo.reset(island, cargo_type)
 
 	return true, "reset"
 end
+
+-- Define commands related to cargo
+Command.registerCommand(
+	"resetcargo",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		local was_reset, error = Cargo.reset(is.getDataFromName(arg[1]), string.friendly(arg[2]))
+        if was_reset then
+            d.print("Reset the cargo storages for all islands", false, 0, peer_id)
+        else
+            d.print("Cargo failed to reset! error: "..error, false, 1, peer_id)
+        end
+	end,
+	"admin",
+	"resets the all island cargo storages to 0 for each resource, leave island blank for all islands, leave cargo_type blank for all resources",
+	"resets the ai's cargo storages",
+	{"", "North_Harbour", "Garrison_Toddy oil"},
+	"[island] [cargo_type]"
+)
+
+-- Queue convoy command
+Command.registerCommand(
+	"queueconvoy",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		g_savedata.tick_extensions.cargo_vehicle_spawn = RULES.LOGISTICS.CARGO.VEHICLES.spawn_time - g_savedata.tick_counter - 1
+		d.print("Updated convoy tick extension so a convoy will spawn when possible.", false, 0, peer_id)
+	end,
+	"admin",
+	"queues a convoy to be sent out, will be sent out once theres not any convoys",
+	"queues a convoy",
+	{""}
+)
+
+Command.registerCommand(
+	"debugcargo1",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		d.print("asking cargo to do things...(get island distance)", false, 0, peer_id)
+        for island_index, island in pairs(g_savedata.islands) do
+            if island.faction == ISLAND.FACTION.AI then
+                Cargo.getIslandDistance(g_savedata.ai_base_island, island)
+            end
+        end
+	end,
+	"admin",
+	"Debugging command which has Cargo calculate the distance for every island from the AI base",
+	"Debugging command for cargo distance calculations",
+	{""}
+)
+
+Command.registerCommand(
+	"debugcargo2",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		d.print("asking cargo to do things...(get best route)", false, 0, peer_id)
+		if arg[1] == nil then
+			d.print("Missing island id argument!", false, 0, peer_id)
+			return
+		end
+		if tonumber(arg[1]) == nil then
+			d.print("Island ID must be a number!", false, 0, peer_id)
+			return
+		end
+        island_selected = g_savedata.islands[tonumber(arg[1])]
+        if island_selected then
+            d.print("selected island index: "..island_selected.index, false, 0, peer_id)
+            local best_route = Cargo.getBestRoute(g_savedata.ai_base_island, island_selected)
+            if best_route[1] then
+                d.print("first transportation method: "..best_route[1].transport_method, false, 0, peer_id)
+            else
+                d.print("unable to find cargo route!", false, 0, peer_id)
+            end
+            if best_route[2] then
+                d.print("second transportation method: "..best_route[2].transport_method, false, 0, peer_id)
+            end
+            if best_route[3] then
+                d.print("third transportation method: "..best_route[3].transport_method, false, 0, peer_id)
+            end
+        else
+            d.print("incorrect island id: "..arg[1], false, 0, peer_id)
+        end
+	end,
+	"admin",
+	"Runs Cargo.getBestRoute for the given island id and prints the calculated route",
+	"Prints the best cargo route from the AI base to the given island id",
+	{""}
+)

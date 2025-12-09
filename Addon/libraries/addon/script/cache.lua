@@ -1,6 +1,7 @@
 -- required libraries
 require("libraries.addon.script.debugging")
 require("libraries.utils.tables")
+require("libraries.addon.commands.command.command")
 
 -- library name
 Cache = {}
@@ -77,3 +78,34 @@ function Cache.exists(location)
 	d.print("g_savedata.Cache."..location.." doesn't exist", true, 0)
 	return false
 end
+
+-- Define commands related to cache
+Command.registerCommand(
+	"clearcache",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		d.print("clearing cache", false, 0, peer_id)
+		Cache.reset()
+		d.print("cache reset", false, 0, peer_id)
+	end,
+	"admin",
+	"",
+	"",
+	{""}
+)
+
+Command.registerCommand(
+	"debugcache",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		d.print("Cache Writes: "..g_savedata.cache_stats.writes.."\nCache Failed Writes: "..g_savedata.cache_stats.failed_writes.."\nCache Reads: "..g_savedata.cache_stats.reads, false, 0, peer_id)
+	end,
+	"admin",
+	"",
+	"",
+	{""}
+)

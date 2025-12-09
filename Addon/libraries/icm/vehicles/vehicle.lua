@@ -68,8 +68,6 @@ function Vehicle.getSpeed(vehicle_object, ignore_terrain_type, ignore_aggressive
 			else
 				terrain_type = v.getTerrainType(vehicle_object.transform)
 			end
-
-			local _, squad = Squad.getSquad(vehicle_object.group_id)
 			
 			local aggressive = aggressiveness_override or not ignore_aggressiveness and squad.command == SQUAD.COMMAND.ENGAGE
 			if aggressive then

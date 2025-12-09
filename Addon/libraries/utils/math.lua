@@ -19,7 +19,7 @@
 
 
 	Variables
-   
+
 
 ]]
 
@@ -101,6 +101,8 @@ function math.seededRandom(use_decimals, seed, min, max)
 	-- return the seeded number
 	return seeded_number
 end
+
+
 
 ---@param x number the number to wrap
 ---@param min number the minimum number to wrap around
@@ -200,4 +202,70 @@ function math.xor(...)
 
 	-- xor can be summarized down to if the number of true inputs modulo 2 is equal to 1, so do that.
 	return tc%2==1
+end
+
+--- Linear Scale, converts one scale to another scale <br>
+--- For example, if x is x_min, then it will output y_min <br>
+--- and if x is x_max, then it will output y_max <br>
+--- And anywhere inbetween, it will output between the y_min and y_max.
+---@param x number the value from the original scale
+---@param x_min number the minimum value for x scale
+---@param x_max number the maximum value for the x scale
+---@param y_min number the value to output from the y scale if x is x_min
+---@param y_max number the value to output from the y scale if x is x_max
+---@return number y the value from the y scale
+function math.linearScale(x, x_min, x_max, y_min, y_max)
+	--[[
+		Get the scaled x
+		for example, if x is 0, x_min is -5, and x_max is 5, then scaled x is 0.5
+	]]
+	local scaled_x = (x - x_min)/(x_max - x_min)
+
+	--[[
+		return the scaled y
+		if scaled_x is 0.5, y_min is 10, and y_max is -10, then scaled_y is 0.
+	]]
+	return (1-scaled_x)*y_min+scaled_x*y_max
+end
+
+--- Quadratic Bezier interpolation between 3 points.
+---@param last number the previous point
+---@param new number the new target point
+---@param p1 number the control point
+---@param progress number the progress between 0 and 1
+---@return number point the point between last and new
+function math.quadraticBezier(last, new, p1, progress)
+	-- calculate the inverse of the progress
+	local inverse_progress = 1-progress
+
+	-- calculate the progress squared
+	local progress_squared = progress*progress
+
+	-- calculate the inverse progress squared
+	local inverse_progress_squared = inverse_progress*inverse_progress
+
+	-- calculate and return the point.
+	return inverse_progress_squared * last + 2 * inverse_progress * progress * p1 + progress_squared * new
+end
+
+--- Function for rounding a number.
+---@param x number the number to round.
+---@param decimal_places number|nil the number of decimal places to round to.
+---@return number rounded_x the rounded number.
+function math.round(x, decimal_places)
+	-- Default the number of decimal places to 0 if unspecified.
+	decimal_places = decimal_places or 0
+
+	-- Multiply the number by 10^places, this gives us the number to multiply and divide by to preserve the desired number of decimal places.
+	local decimal_multplier = 10^decimal_places
+
+	-- If this is a positive number, use floor and + 0.5
+	if x >= 0 then
+		-- Round with the number of places. (positive numbers)
+		return math.floor(x * decimal_multplier + 0.5) / decimal_multplier
+	-- Otherwise, we need to use ceil and -0.5, otherwise, something like -0.5 rounds to 0, instead of -1.
+	else
+		-- Round with the number of places. (negative numbers)
+		return math.ceil(x * decimal_multplier - 0.5) / decimal_multplier
+	end
 end

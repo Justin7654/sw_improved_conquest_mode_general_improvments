@@ -383,7 +383,7 @@ g_savedata = {
 }
 
 -- libraries
-require("libraries.addon.commands.commands") -- the command library
+require("libraries.addon.commands.command.command") -- the command library
 require("libraries.addon.commands.flags") -- the flag command library
 
 require("libraries.addon.components.addonLocationUtils") -- functions for addon locations and environment mods
@@ -5021,7 +5021,7 @@ function tickCargoVehicles(game_ticks)
 end
 
 function tickControls(game_ticks)
-	d.startProfiler("tickControls()", true, "onTick()")
+	d.startProfiler("tickControls()", true)
 	local control_started = s.getTimeMillisec()
 	for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
 		for group_id, vehicle_object in pairs(squad.vehicles) do

@@ -344,7 +344,7 @@ function Players.setupOOP(player)
 			end
 
 			-- handle the debug (handles enabling of debugs and such)
-			d.handleDebug(debug_type, enabled, self.peer_id, self.steam_id)
+			d.handleDebug(debug_type, enabled, self.peer_id)
 		end
 	end
 

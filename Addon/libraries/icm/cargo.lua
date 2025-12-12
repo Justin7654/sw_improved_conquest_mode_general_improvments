@@ -16,6 +16,7 @@ require("libraries.addon.commands.command.command")
 require("libraries.icm.objective")
 require("libraries.icm.squad")
 require("libraries.icm.vehicles.vehicle")
+require("libraries.icm.squad")
 
 require("libraries.utils.math")
 require("libraries.utils.tables")
@@ -107,7 +108,7 @@ function Cargo.clean(group_id) -- cleans the data on the cargo vehicle if it exi
 			end
 
 			--* check if theres still vehicles in the squad, if so, set the squad's command to none
-			local squad_index, squad = Squad.getSquad(group_id)
+			local squad_index, squad = Squad.getSquadFromGroup(group_id)
 			if squad_index and squad then
 				g_savedata.ai_army.squadrons[squad_index].command = SQUAD.COMMAND.NONE
 			end
@@ -116,7 +117,7 @@ function Cargo.clean(group_id) -- cleans the data on the cargo vehicle if it exi
 			-- if there is, delete it to avoid a softlock
 			if g_savedata.cargo_vehicles[cargo_vehicle_index+1] then
 				if g_savedata.cargo_vehicles[cargo_vehicle_index+1].route_status == 3 then
-					local squad_index, squad = Squad.getSquad(g_savedata.cargo_vehicles[cargo_vehicle_index+1].vehicle_data.group_id)
+					local squad_index, squad = Squad.getSquadFromGroup(g_savedata.cargo_vehicles[cargo_vehicle_index+1].vehicle_data.group_id)
 
 					if squad_index then
 						v.kill(g_savedata.cargo_vehicles[cargo_vehicle_index+1].vehicle_data, true, true)
@@ -228,10 +229,10 @@ function Cargo.getEscorts(cargo_vehicle, island) -- gets the escorts for the car
 	g_savedata.cargo_vehicles[cargo_vehicle.group_id].convoy[1 + math.floor(#possible_escorts/2)] = cargo_vehicle.group_id
 
 	for escort_index, escort in ipairs(possible_escorts) do
-		local squad_index, _ = Squad.getSquad(cargo_vehicle.group_id)
+		local squad_index, _ = Squad.getSquadFromGroup(cargo_vehicle.group_id)
 
 		if squad_index then
-			transferToSquadron(escort, squad_index, true)
+			Squad.transferToSquad(escort, squad_index, true)
 			p.resetPath(escort)
 			if cargo_vehicle.transform then
 				p.addPath(escort, cargo_vehicle.transform)

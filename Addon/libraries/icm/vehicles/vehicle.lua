@@ -19,6 +19,8 @@ Vehicle = {}
 -- shortened library name
 v = Vehicle
 
+---@alias cost number
+
 ---@param vehicle_object vehicle_object the vehicle you want to get the speed of
 ---@param ignore_terrain_type ?boolean if false or nil, it will include the terrain type in speed, otherwise it will return the offroad speed (only applicable to land vehicles)
 ---@param ignore_aggressiveness ?boolean if false or nil, it will include the aggressiveness in speed, otherwise it will return the normal speed (only applicable to land vehicles)
@@ -32,7 +34,7 @@ function Vehicle.getSpeed(vehicle_object, ignore_terrain_type, ignore_aggressive
 		return 0, false
 	end
 
-	local _, squad = Squad.getSquad(vehicle_object.group_id)
+	local _, squad = Squad.getSquadFromGroup(vehicle_object.group_id)
 
 	if not squad then
 		d.print("(Vehicle.getSpeed) squad is nil! vehicle_id: "..tostring(vehicle_object.group_id), true, 1)
@@ -290,14 +292,14 @@ function Vehicle.getCost(vehicle_name)
 
 	if not vehicle_name then
 		d.print("(Vehicle.getCost) vehicle_name is nil!", true, 1)
-		return 0, nil, false
+		return 0, false, false
 	end
 
 	vehicle_name = string.removePrefix(vehicle_name)
 
 	local prefab, got_prefab = v.getPrefab(vehicle_name)
 
-	if not got_prefab then
+	if not got_prefab or not prefab then
 		return 0, false, true
 	end
 

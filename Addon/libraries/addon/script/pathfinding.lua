@@ -192,7 +192,7 @@ function Pathfinding.addPath(vehicle_object, target_dest, translate_forward_dist
 
 		local exclude_offroad = false
 
-		local squad_index, squad = Squad.getSquad(vehicle_object.group_id)
+		local squad_index, squad = Squad.getSquadFromGroup(vehicle_object.group_id)
 		if squad.command == SQUAD.COMMAND.CARGO then
 			for c_vehicle_id, c_vehicle_object in pairs(squad.vehicles) do
 				if g_savedata.cargo_vehicles[c_vehicle_id] then

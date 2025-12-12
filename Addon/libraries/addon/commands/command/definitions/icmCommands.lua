@@ -49,7 +49,7 @@ Command.registerCommand(
 	function(full_message, peer_id, arg)
 		for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
 			if squad_index ~= RESUPPLY_SQUAD_INDEX then
-				setSquadCommand(squad, SQUAD.COMMAND.NONE)
+				Squad.setCommand(squad, SQUAD.COMMAND.NONE)
 				if squad.command == SQUAD.COMMAND.DEFEND then
 					squad.command = SQUAD.COMMAND.NONE
 				end
@@ -836,7 +836,7 @@ Command.registerCommand(
                                 v.kill(cargo_vehicle.vehicle_data, true, true)
 
                                 -- reset the squad's command
-                                local squad_index, _ = Squad.getSquad(cargo_vehicle.vehicle_data)
+                                local squad_index, _ = Squad.getSquadFromGroup(cargo_vehicle.vehicle_data)
                                 g_savedata.ai_army.squadrons[squad_index].command = SQUAD.COMMAND.NONE
                             end
                         end

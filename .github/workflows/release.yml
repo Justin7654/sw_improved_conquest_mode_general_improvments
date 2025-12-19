@@ -1,0 +1,48 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_name:
+        description: 'Release name (used for tag and release)'
+        required: true
+        type: string
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Create staging directory
+        run: mkdir -p release_staging
+      
+      - name: Copy playlist.xml
+        run: cp Addon/playlist.xml release_staging/
+      
+      - name: Copy vehicle XML files
+        run: cp Addon/vehicle_*.xml release_staging/
+      
+      - name: Copy and rename main.lua to script.lua
+        run: cp Addon/_build/out/release/main.lua release_staging/script.lua
+      
+      - name: Create ZIP archive
+        run: |
+          cd release_staging
+          zip -r ../${{ inputs.release_name }}.zip .
+          cd ..
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_name }}
+          name: ${{ inputs.release_name }}
+          files: ${{ inputs.release_name }}.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

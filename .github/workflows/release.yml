@@ -33,9 +33,9 @@ jobs:
       - name: Create ZIP archive
         run: |
           cd release_staging
-          zip -r ../${{ inputs.release_name }}.zip .
+          zip -r "../${{ inputs.release_name }}.zip" .
           cd ..
-      
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:

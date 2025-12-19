@@ -66,16 +66,16 @@ function Squad.getSquadFromGroup(group_id)
 			return squad_index, nil
 		end
 	else
-		d.print("(Squad.getSquadFromGroup) failed to get squad_index for group with id "..tostring(group_id), true, 1)
 		-- This is a band-aid fix, and it should be patched at its source since this shouldn't ever happen in the first place.
 		-- Related to cargo convoy spaw?
-		for i, squad in ipairs(g_savedata.ai_army.squadrons) do
+		for i, squad in pairs(g_savedata.ai_army.squadrons) do
 			if squad.vehicles[group_id] then
 				d.print("(Squad.getSquadFromGroup) squad recovered at index "..tostring(i).." for group with id "..tostring(group_id), true, 1)
 				g_savedata.ai_army.squad_vehicles[group_id] = i
 				return i, squad
 			end
 		end
+		d.print("(Squad.getSquadFromGroup) failed to get squad_index for group with id "..tostring(group_id)..". Recovery failed", true, 1)
 		return nil, nil
 	end
 end
@@ -230,10 +230,9 @@ function Squad.removeVehicle(squad, vehicle_object, is_disbanding)
 
 	squad.vehicles[vehicle_object.group_id] = nil
 
-	-- TODO: Remove
-	if g_savedata.ai_army.squad_vehicles[vehicle_object.group_id] ~= nil then
+	if g_savedata.ai_army.squad_vehicles[vehicle_object.group_id] == squad.index then
+		-- Need to check because this might have already been overwritten if the vehicle is being transferred
 		g_savedata.ai_army.squad_vehicles[vehicle_object.group_id] = nil
-		d.print("Its not mutable")
 	end
 
 	--? If:
@@ -388,6 +387,7 @@ function Squad.canAccessIsland(squad, island)
 	elseif squad.vehicle_type == VEHICLE.TYPE.BOAT then
 		-- Boat vehicles cant get to islands with no_access=boat tags
 		if Tags.has(island.tags, "no_access=boat") then
+			d.print("(Squad.canAccessIsland) Boat vehicle squad "..tostring(squad.index).." cannot access island "..island.name.." due to no_access=boat tag", true, 0)
 			return false, true
 		end
 	end
@@ -552,7 +552,7 @@ end
 --- **WIP - Does absolutely nothing currently and documentation is not complete**
 function Squad.getBestSquadForVehicle(vehicle_object, force)
 	local costs = {} ---@type table<integer, number>
-	for i, squad in ipairs(g_savedata.ai_army.squadrons) do
+	for i, squad in pairs(g_savedata.ai_army.squadrons) do
 		
 	end
 end

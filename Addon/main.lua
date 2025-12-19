@@ -26,7 +26,7 @@ limitations under the License.
 --- Developed using LifeBoatAPI - Stormworks Lua plugin for VSCode - https://code.visualstudio.com/download (search "Stormworks Lua with LifeboatAPI" extension)
 --- If you have any issues, please report them here: https://github.com/nameouschangey/STORMWORKS_VSCodeExtension/issues - by Nameous Changey
 
-ADDON_VERSION = "(0.4.0.26)"
+ADDON_VERSION = "(0.4.0.27)"
 IS_DEVELOPMENT_VERSION = string.match(ADDON_VERSION, "(%d%.%d%.%d%.%d)")
 
 SHORT_ADDON_NAME = "ICM"
@@ -912,6 +912,11 @@ function setupMain(is_world_create)
 
 				g_savedata.islands[new_island.index] = new_island
 				d.print("Setup neutral island: "..new_island.index.." \""..island.name.."\"", true, 0)
+
+				-- check for invalid tags
+				if not Tags.has(island.tags, "land_access") and not Tags.has(island.tags, "can_spawn=land") then
+					d.print("WARNING: Island "..island.name.." can spawn land vehicles, but is missing the land_access tag, this may cause issues!", true, 1)
+				end
 
 				-- stop creating new islands if we've reached the island limit
 				if(table.length(g_savedata.islands) >= islands_count) then
@@ -2376,8 +2381,7 @@ function tickAI(game_ticks)
 								if not squad_leader then
 									if squad_index ~= RESUPPLY_SQUAD_INDEX then
 										-- delete the squad as its empty
-										g_savedata.ai_army.squadrons[squad_index] = nil
-										d.print("removed squad: "..tostring(squad_index), true, 0)
+										Squad.disband(squad_index, "tickAI() empty squad cleanup")
 									else
 										Squad.setCommand(squad, SQUAD.COMMAND.RESUPPLY)
 									end
@@ -2432,18 +2436,18 @@ function tickAI(game_ticks)
 						end
 						
 						-- add more vehicles if we didn't hit the limit
-						if (air_total + boats_total) < MAX_ATTACKING_SQUADS then
+						if (air_total + boats_total + land_total) < MAX_ATTACKING_SQUADS then
 							for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
 								if squad.command == SQUAD.COMMAND.PATROL or squad.command == SQUAD.COMMAND.DEFEND and squad.vehicle_type ~= VEHICLE.TYPE.TURRET and squad.role ~= "defend" then
-									if (air_total + boats_total) < MAX_ATTACKING_SQUADS then
-										if squad.vehicle_type == VEHICLE.TYPE.BOAT then
-											if not Tags.has(objective_island.tags, "no-access=boat") and not Tags.has(ally_island.tags, "no-access=boat") then
+									if (air_total + boats_total + land_total) < MAX_ATTACKING_SQUADS then
+										if Squad.canAccessIsland(squad, ally_island) and Squad.canAccessIsland(squad, objective_island) then
+											if squad.vehicle_type == VEHICLE.TYPE.BOAT then
 												boats_total = boats_total + 1
 												setSquadCommandStage(squad, objective_island)
+											else
+												air_total = air_total + 1
+												setSquadCommandStage(squad, ally_island)
 											end
-										else
-											air_total = air_total + 1
-											setSquadCommandStage(squad, ally_island)
 										end
 									end
 								end
@@ -2456,12 +2460,13 @@ function tickAI(game_ticks)
 						local is_attack = (g_count_attack / g_count_squads) >= 0.25 and g_count_attack >= MIN_ATTACKING_SQUADS and g_is_boats_ready and g_is_air_ready
 						
 						if is_attack then
+							-- The AI is now attacking. Set all staging squads to attack!
 							g_savedata.is_attack = is_attack
 			
 							for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
 								if squad.command == SQUAD.COMMAND.STAGE then
-									if not Tags.has(objective_island.tags, "no-access=boat") and squad.vehicle_type == VEHICLE.TYPE.BOAT or squad.vehicle_type ~= VEHICLE.TYPE.BOAT then -- makes sure boats can attack that island
-										setSquadCommandAttack(squad, objective_island)
+									if Squad.canAccessIsland(squad, objective_island) then -- makes sure boats can attack that island
+										Squad.setCommand(squad, SQUAD.COMMAND.ATTACK, objective_island)
 									end
 								elseif squad.command == SQUAD.COMMAND.ATTACK then
 									if squad.target_island.faction == ISLAND.FACTION.AI then
@@ -2471,19 +2476,21 @@ function tickAI(game_ticks)
 								end
 							end
 						else
+							-- The AI is not yet ready to attack. Set more squads to staging if possible.
 							for _, squad in pairs(g_savedata.ai_army.squadrons) do
-								if squad.command == SQUAD.COMMAND.NONE and squad.vehicle_type ~= VEHICLE.TYPE.TURRET and (air_total + boats_total) < MAX_ATTACKING_SQUADS then
+								if squad.command == SQUAD.COMMAND.NONE and squad.vehicle_type ~= VEHICLE.TYPE.TURRET and (air_total + boats_total + land_total) < MAX_ATTACKING_SQUADS then
 									if squad.vehicle_type == VEHICLE.TYPE.BOAT then -- send boats ahead since they are slow
 										if not Tags.has(objective_island.tags, "no-access=boat") then -- if boats can attack that island
-											setSquadCommandStage(squad, objective_island)
+											Squad.setCommand(squad, SQUAD.COMMAND.STAGE, objective_island)
 											boats_total = boats_total + 1
 										end
 									else
-										setSquadCommandStage(squad, ally_island)
+										Squad.setCommand(squad, SQUAD.COMMAND.STAGE, ally_island)
 										air_total = air_total + 1
 									end
-								elseif squad.command == SQUAD.COMMAND.STAGE and squad.vehicle_type == VEHICLE.TYPE.BOAT and not Tags.has(objective_island.tags, "no-access=boat") and (air_total + boats_total) < MAX_ATTACKING_SQUADS then
-									setSquadCommandStage(squad, objective_island)
+								elseif squad.command == SQUAD.COMMAND.STAGE and squad.vehicle_type == VEHICLE.TYPE.BOAT and not Tags.has(objective_island.tags, "no-access=boat") and (air_total + boats_total + land_total) < MAX_ATTACKING_SQUADS then
+									Squad.setCommand(squad, SQUAD.COMMAND.STAGE, objective_island)
+									-- Assuming it does this so that if the island changes, it will update. Why only boats?
 									squad.target_island = objective_island
 								end
 							end

@@ -46502,24 +46502,14 @@
 							<l value="5194"/>
 						</graph_links>
 					</c>
-					<c component_type="11" id="5196" name="land_path,precision=0" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
-						<spawn_transform 30="89.849899" 31="78.691589" 32="143.699387"/>
+					<c component_type="11" id="5197" name="land_path,precision=0" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+						<spawn_transform 30="139.779694" 31="79.796028" 32="115.723358"/>
 						<spawn_bounds>
 							<min x="-10" y="-10" z="-10"/>
 							<max x="10" y="10" z="10"/>
 						</spawn_bounds>
 						<graph_links>
 							<l value="5195"/>
-						</graph_links>
-					</c>
-					<c component_type="11" id="5197" name="land_path,precision=0" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
-						<spawn_transform 30="139.779694" 31="79.796028" 32="116.380882"/>
-						<spawn_bounds>
-							<min x="-10" y="-10" z="-10"/>
-							<max x="10" y="10" z="10"/>
-						</spawn_bounds>
-						<graph_links>
-							<l value="5196"/>
 						</graph_links>
 					</c>
 					<c component_type="11" id="5198" name="land_path,precision=0" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">

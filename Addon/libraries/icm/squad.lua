@@ -62,7 +62,7 @@ function Squad.getSquadFromGroup(group_id)
 		if squad then
 			return squad_index, squad
 		else
-			d.print("(Squad.getSquadFromGroup) failed to get squad for squad with id "..tostring(squad_index), true, 1)
+			--d.print("(Squad.getSquadFromGroup) failed to get squad for squad with id "..tostring(squad_index), true, 1)
 			return squad_index, nil
 		end
 	else
@@ -70,12 +70,12 @@ function Squad.getSquadFromGroup(group_id)
 		-- Related to cargo convoy spaw?
 		for i, squad in pairs(g_savedata.ai_army.squadrons) do
 			if squad.vehicles[group_id] then
-				d.print("(Squad.getSquadFromGroup) squad recovered at index "..tostring(i).." for group with id "..tostring(group_id), true, 1)
+				--d.print("(Squad.getSquadFromGroup) squad recovered at index "..tostring(i).." for group with id "..tostring(group_id), true, 1)
 				g_savedata.ai_army.squad_vehicles[group_id] = i
 				return i, squad
 			end
 		end
-		d.print("(Squad.getSquadFromGroup) failed to get squad_index for group with id "..tostring(group_id)..". Recovery failed", true, 1)
+		--d.print("(Squad.getSquadFromGroup) failed to get squad_index for group with id "..tostring(group_id)..". Recovery failed", true, 1)
 		return nil, nil
 	end
 end

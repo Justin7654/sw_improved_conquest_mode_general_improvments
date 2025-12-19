@@ -3762,6 +3762,11 @@ function tickVehicles(game_ticks)
 
 			vehicle_object.transform = server.getVehiclePos(main_vehicle_id)
 
+			if not vehicle_object.transform then
+				d.print("failed to get vehicle position for vehicle id " .. tostring(main_vehicle_id) .. "(group: "..tostring(group_id)..")", true, 1)
+				goto continue_tickVehicles_updateTransform
+			end
+
 			vehicle_object.transform_history[getTickID(group_id, 120)] = vehicle_object.transform
 
 			if d.getDebug(6) then

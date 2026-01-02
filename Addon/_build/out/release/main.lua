@@ -1910,19 +1910,17 @@ end
 ---@param y1 number? y coordinate of position 1 (exclude for 2D distance, include for 3D distance)
 ---@param y2 number? y coordinate of position 2 (exclude for 2D distance, include for 3D distance)
 ---@return number distance the euclidean distance between position 1 and position 2
-function math.euclideanDistance(...)
-	local c = table.pack(...)
+function math.euclideanDistance(x1,x2,z1,z2,y1,y2)
+	local rx = x1 - x2
+	local rz = z1 - z2
 
-	local rx = c[1] - c[2]
-	local rz = c[3] - c[4]
-
-	if c.n == 4 then
+	if y1 == nil or y2 == nil then
 		-- 2D distance
 		return math.sqrt(rx*rx+rz*rz)
 	end
 
 	-- 3D distance
-	local ry = c[5] - c[6]
+	local ry = y1 - y2
 	return math.sqrt(rx*rx+ry*ry+rz*rz)
 end
 
@@ -1934,22 +1932,21 @@ end
 ---@param y2 number? y coordinate of position 2 (exclude to just get yaw, include to get yaw and pitch)
 ---@return number yaw the yaw needed to face position 2 from position 1
 ---@return number pitch the pitch needed to face position 2 from position 1, will return 0 if y not specified.
-function math.angleToFace(...)
-	local c = table.pack(...)
+function math.angleToFace(x1,x2,z1,z2,y1,y2)
 
 	-- relative x coordinate
-	local rx = c[1] - c[2]
+	local rx = x1 - x2
 	-- relative z coordinate
-	local rz = c[3] - c[4]
+	local rz = z1 - z2
 
 	local yaw = math.atan(rz, rx) - math.half_pi
 
-	if c.n == 4 then
+	if y1 == nil or y2 == nil then
 		return yaw, 0
 	end
 
 	-- relative y
-	local ry = c[5] - c[6]
+	local ry = y1 - y2
 
 	local pitch = -math.atan(ry, math.sqrt(rx * rx + rz * rz))
 
@@ -6099,6 +6096,7 @@ function SpawningUtils.spawnObject(spawn_transform, addon_index, location_index,
 		if Tags.has(component_data.tags, "type=dlc_weapons_flag") then
 			--TODO: Check if this is even used anymore?
 			--l_vehicle_type = "flag"
+			d.print("(su.spawnObject) Spawned a flag vehicle!", true, 0)
 		end
 
 		local object_data = {
@@ -6273,7 +6271,6 @@ Island = {}
 -- shortened library name
 is = Island
 
---- @alias AnyIsland ISLAND|AI_ISLAND|PLAYER_ISLAND TODO: REMOVE
 --- @alias ANY_ISLAND ISLAND|AI_ISLAND|PLAYER_ISLAND
 
 -- checks if this island can spawn the specified vehicle
@@ -6358,7 +6355,7 @@ end
 
 --# returns the island data from the provided island index (warning: if you modify the returned data, it will not apply anywhere else, and will be local to that area.)
 ---@param island_index integer the island index you want to get
----@return AnyIsland island the island data from the index
+---@return ANY_ISLAND island the island data from the index
 ---@return boolean island_found returns true if the island was found
 function Island.getDataFromIndex(island_index)
 	if not island_index then -- if the island_index wasn't specified
@@ -9292,20 +9289,19 @@ function Squad.getSquadFromGroup(group_id)
 		if squad then
 			return squad_index, squad
 		else
-			--d.print("(Squad.getSquadFromGroup) failed to get squad for squad with id "..tostring(squad_index), true, 1)
 			return squad_index, nil
 		end
 	else
 		-- This is a band-aid fix, and it should be patched at its source since this shouldn't ever happen in the first place.
-		-- Related to cargo convoy spaw?
+		-- Related to cargo convoy spawn?
 		for i, squad in pairs(g_savedata.ai_army.squadrons) do
 			if squad.vehicles[group_id] then
-				--d.print("(Squad.getSquadFromGroup) squad recovered at index "..tostring(i).." for group with id "..tostring(group_id), true, 1)
+				d.print("(Squad.getSquadFromGroup) squad recovered at index "..tostring(i).." for group with id "..tostring(group_id), true, 1)
 				g_savedata.ai_army.squad_vehicles[group_id] = i
 				return i, squad
 			end
 		end
-		--d.print("(Squad.getSquadFromGroup) failed to get squad_index for group with id "..tostring(group_id)..". Recovery failed", true, 1)
+		d.print("(Squad.getSquadFromGroup) failed to get squad_index for group with id "..tostring(group_id)..". Recovery failed", true, 1)
 		return nil, nil
 	end
 end
@@ -9442,7 +9438,7 @@ end
 --- Removes a vehicle from the specified squad. If this is the last vehicle in the squad, the squad will be automatically disbanded
 --- @param squad squadron the squad to remove the vehicle from
 --- @param vehicle_object vehicle_object the vehicle to remove from the squad
---- @param is_disbanding boolean? if the vehicle is being removed because the squad is being disbanded. This is used internally to prevent a infinite loop when disbanding a squad
+--- @param is_disbanding boolean? if the vehicle is being removed because the squad is being disbanded. This is used internally to prevent extra disband calls when disbanding
 --- @return boolean success if the removal was successful
 function Squad.removeVehicle(squad, vehicle_object, is_disbanding)
 	if not squad then
@@ -9522,7 +9518,7 @@ end
 --- @param command SQUAD_COMMAND
 --- @vararg nil
 --- @return boolean success if the command was successfully set. If false, then either the parameters are invalid or theres a restriction blocking it
---- @overload fun(squad:squadron, command:"attack"|"stage"|"defend"|"patrol", target_island: AnyIsland):boolean
+--- @overload fun(squad:squadron, command:"attack"|"stage"|"defend"|"patrol", target_island: ANY_ISLAND):boolean
 --- @overload fun(squad:squadron, command:"investigate", investigate_transform: SWMatrix):boolean
 function Squad.setCommand(squad, command, ...)
 	-- Input validation
@@ -9673,30 +9669,28 @@ function Squad.canJoinSquad(squad, vehicle_object)
 		d.print("(Squad.canJoinSquad) vehicle_object is nil!", true, 1)
 		return false
 	end
-	local squad_leader = Squad.getLeader(squad)
-	if not squad_leader then
-		-- TODO: Might cause issues if the squad is empty
-		d.print("(Squad.canJoinSquad) squad leader is nil!", true, 1)
-		return false
-	end
 	
 	-- Must be of the same vehicle type
-	if squad_leader.vehicle_type ~= vehicle_object.vehicle_type then
+	if squad.vehicle_type ~= vehicle_object.vehicle_type then
 		return false
 	end
 	
 	-- Must be of the same role
-	if squad_leader.role ~= vehicle_object.role then
+	if squad.role ~= vehicle_object.role then
 		return false
 	end
 	
 	-- Land vehicles must be able be access eachother (ie, a vehicle in arid cant join a squad in sawyer)
-	if squad_leader.vehicle_type == VEHICLE.TYPE.LAND then
-		-- Get the land mass that the squad leader is on
-		local leader_land_access = Tags.getValue(squad_leader.home_island.tags, "land_access", true)
-		local vehicle_land_access = Tags.getValue(vehicle_object.home_island.tags, "land_access", true)
-		if leader_land_access ~= vehicle_land_access then
-			return false
+	if squad.vehicle_type == VEHICLE.TYPE.LAND then
+		-- Get the squad leader, if there is no squad leader then skip this check
+		local squad_leader = Squad.getLeader(squad)
+		if squad_leader then
+			-- Get the land mass that the squad leader is on
+			local leader_land_access = Tags.getValue(squad_leader.home_island.tags, "land_access", true)
+			local vehicle_land_access = Tags.getValue(vehicle_object.home_island.tags, "land_access", true)
+			if leader_land_access ~= vehicle_land_access then
+				return false
+			end
 		end
 	end
 	
@@ -12896,7 +12890,659 @@ function ExecutionQueue.queue(execute_condition, function_to_execute, variable_t
 
 	return true
 end
- -- functions for queuing functions for conditions to be met. -- custom math functions -- custom string functions -- custom table functions
+ -- functions for queuing functions for conditions to be met. -- custom math functions
+--[[
+	
+Copyright 2025 Liam Matthews
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+]]
+
+-- Library Version 0.0.3
+
+--[[
+
+
+	Library Setup
+
+
+]]
+
+-- required libraries
+
+---@diagnostic disable:duplicate-doc-field
+---@diagnostic disable:duplicate-doc-alias
+---@diagnostic disable:duplicate-set-field
+
+--[[ 
+	Contains some code for math on Vector 2s, as in, a 2D vector.
+]]
+
+-- library name
+Vector2 = {}
+
+--[[
+
+
+	Classes
+
+
+]]
+
+---@class Vector2
+---@field x number
+---@field y number Usually the z axis in disguise.
+
+--[[
+
+
+	Variables
+
+
+]]
+
+--[[
+
+
+	Functions
+
+
+]]
+
+--- Function for creating a new Vector2
+---@param x number
+---@param y number
+---@return Vector2
+function Vector2.new(x, y)
+	-- create the vector
+	local vector = {
+		x = x,
+		y = y
+	}
+
+	-- return the vector
+	return vector
+end
+
+--- Function for turning a Matrix into a Vector2 (matrix x becomes vector x, matrix z becomes vector y)
+---@param target_matrix SWMatrix
+---@param raw_coordinates boolean? whether or not to return the raw coordinates of the matrix (true), or the transformed coordinates (false/nil).
+---@return Vector2 vector the vector created from the matrix.
+function Vector2.fromMatrix(target_matrix, raw_coordinates)
+	-- if raw_coordinates is true
+	if raw_coordinates then
+		-- return the raw coordinates
+		return {
+			x = target_matrix[13],
+			y = target_matrix[15]
+		}
+	end
+
+	--* raw coordinates is false, return the transformed coordinates
+
+	-- get transformed coordinates (I assume this function properly applies the rotations, scaling, etc to the matrix.)
+	local x, _, z = matrix.position(target_matrix)
+
+	-- return the transformed coordinates
+	return {
+		x = x,
+		y = z
+	}
+end
+
+--- Function for creating a Vector2 from polar coordinates
+---@param distance number the distance from the origin
+---@param angle number the angle from the origin
+---@return Vector2
+function Vector2.fromPolar(distance, angle)
+	-- create the vector from the polar coordinates
+	local vector = {
+		x = distance * math.cos(angle),
+		y = distance * math.sin(angle)
+	}
+
+	-- return the vector
+	return vector
+end
+
+--- Function for adding two Vector2s
+---@param a Vector2
+---@param b Vector2
+---@return Vector2
+function Vector2.add(a, b)
+	-- create the added vector
+	local vector = {
+		x = a.x + b.x,
+		y = a.y + b.y
+	}
+
+	-- return the vector
+	return vector
+end
+
+--- Function for getting the euclidean distance
+---@param a Vector2
+---@param b Vector2
+---@return number euclidean_distance euclidean distance between the two 2D vectors.
+function Vector2.euclideanDistance(a, b)
+	-- get the relative x position
+	local rx = a.x - b.x
+
+	-- get the relative y position
+	local ry = a.y - b.y
+
+	-- return the distance
+	return math.sqrt(rx*rx+ry*ry)
+end
+
+--- Function for getting the manhattan distance
+---@param a Vector2
+---@param b Vector2
+---@return number manhattan_distance manhattan distance between the two 2D vectors.
+function Vector2.manhattanDistance(a, b)
+	-- return the distance
+	return (
+		math.abs(a.x - b.x) + -- get manhattan distance on x axis
+		math.abs(a.y - b.y) -- get manhattan distance on y axis
+	)
+end
+
+--- Function for getting the angle from vector a to vector b
+---@param a Vector2
+---@param b Vector2
+---@return number angle the angle from vector a to vector b
+function Vector2.angleBetween(a, b)
+	-- get the relative x position
+	local rx = b.x - a.x
+
+	-- get the relative y position
+	local ry = b.y - a.y
+
+	-- return the angle
+	return math.atan(rx, ry)
+end
+
+--- Function for adding two Vector2s.
+---@param a Vector2 the first vector to add.
+---@param b Vector2 the second vector to add.
+---@return Vector2 added_vector the vector created from the addition of the two vectors.
+function Vector2.add(a, b)
+	-- create the vector
+	local added_vector = {
+		x = a.x + b.x,
+		y = a.y + b.y
+	}
+
+	-- return the vector
+	return added_vector
+end
+
+--- Function for subtracting two Vector2s.
+---@param a Vector2 the vector to subtract from.
+---@param b Vector2 the vector to subtract.
+---@return Vector2 subtracted_vector the vector created from the subtraction of the two vectors.
+function Vector2.subtract(a, b)
+	-- create the vector
+	local subtracted_vector = {
+		x = a.x - b.x,
+		y = a.y - b.y
+	}
+
+	-- return the vector
+	return subtracted_vector
+end
+
+--- Function for multiplying two Vector2s.
+---@param a Vector2 the first vector to multiply.
+---@param b Vector2 the second vector to multiply.
+---@return Vector2 multiplied_vector the vector created from the multiplication of the two vectors.
+function Vector2.multiply(a, b)
+	-- create the vector
+	local multiplied_vector = {
+		x = a.x * b.x,
+		y = a.y * b.y
+	}
+
+	-- return the vector
+	return multiplied_vector
+end
+
+--- Function for dividing two Vector2s.
+---@param a Vector2 the vector to divide.
+---@param b Vector2 the vector to divide by.
+---@return Vector2 divided_vector the vector created from the division of the two vectors.
+function Vector2.divide(a, b)
+	-- create the vector
+	local divided_vector = {
+		x = a.x / b.x,
+		y = a.y / b.y
+	}
+
+	-- return the vector
+	return divided_vector
+end
+
+--- Function for doing a scalar division on a vector.
+---@param vector Vector2 the vector to divide.
+---@param scalar number the scalar to divide the vector by.
+---@return Vector2 divided_vector the vector created from the division of the vector by the scalar.
+function Vector2.scalarDivide(vector, scalar)
+	-- create the vector
+	local divided_vector = {
+		x = vector.x / scalar,
+		y = vector.y / scalar
+	}
+
+	-- return the vector
+	return divided_vector
+end
+
+--- Function for doing a scalar multiplication on a vector.
+---@param vector Vector2 the vector to multiply.
+---@param scalar number the scalar to multiply the vector by.
+---@return Vector2 multiplied_vector the vector created from the multiplication of the vector by the scalar.
+function Vector2.scalarMultiply(vector, scalar)
+	-- create the vector
+	local multiplied_vector = {
+		x = vector.x * scalar,
+		y = vector.y * scalar
+	}
+
+	-- return the vector
+	return multiplied_vector
+end
+
+--- Function for doing a dot product on two vectors.
+---@param a Vector2 the first vector to use in the dot product
+---@param b Vector2 the second vector to use in the dot product
+---@return number dot_product the dot product of the two vectors.
+function Vector2.dotProduct(a, b)
+	-- Calculate and Return the dot product.
+	return (
+		a.x * b.x
+		+ a.y * b.y
+	)
+end
+
+--- Function for getting the length of a vector
+---@param vector Vector2 the vector to get the length of
+---@return number length the length of the vector
+function Vector2.length(vector)
+	return math.sqrt(
+		vector.x * vector.x
+		+ vector.y * vector.y
+	)
+end
+
+--- Function for normalising a vector.
+---@param vector Vector2 the vector to normalise.
+---@return Vector2 normalised_vector the normalised vector
+function Vector2.normalise(vector)
+	-- Get the length of the vector
+	local vector_length = Vector2.length(vector)
+
+	-- Do and return a scalar division on the vector by the vector length.
+	return Vector2.scalarDivide(vector, vector_length)
+end
+
+--- Function for doing a scalar projection on a Vector2. Projects position onto a line defined by line_start and line_end, for a given maximum distance.
+---@param position Vector2 the position to project onto the line.
+---@param line_start Vector2 the start position of the line.
+---@param line_end Vector2 the end position of the line.
+---@param maximum_distance number the maximum projection distance.
+---@return Vector2 projected_vector the vector projected onto the line.
+---@return number projected_distance the distance the vector was projected forward by.
+function Vector2.scalarProjection(position, line_start, line_end, maximum_distance)
+	-- Get the position local to the line start
+	local position_vector = Vector2.subtract(position, line_start)
+
+	-- Get the line end position local to the line start
+	local line_vector = Vector2.subtract(line_end, line_start)
+
+	-- Get a normalised version of the line vector.
+	local line_vector_normalised = Vector2.normalise(line_vector)
+
+	-- Get the length of the line vector
+	local line_vector_length = Vector2.length(line_vector)
+
+	-- Get the progress of the position along the line vector.
+	local position_progress =Vector2.dotProduct( -- Get the dot product
+		position_vector,
+		line_vector
+	) / line_vector_length -- Divide by the length of the vector.
+
+	-- Get the position as if it was on the path.
+	local position_on_path = Vector2.add( -- Add the line start and normalised line vector vectors together.
+		line_start,
+		Vector2.scalarMultiply(
+			line_vector_normalised,
+			position_progress -- Scalar Multiply by where the position would be if it was along the line.
+		)
+	)
+
+	-- Calculate the projection distance, by capping it to the line's end.
+	local projection_distance = math.min(
+		Vector2.euclideanDistance(
+			line_end,
+			position_on_path
+		),
+		maximum_distance
+	)
+
+	-- Calculate the projected vector
+	local projected_vector = Vector2.add( -- Add the line start and normalised line vector vectors together.
+		line_start,
+		Vector2.scalarMultiply(
+			line_vector_normalised,
+			position_progress + projection_distance -- Scalar Multiply by the projection distance
+		)
+	)
+
+	-- Return the projected vector.
+	return projected_vector, projection_distance
+end
+
+--- Function for linearly interpolating between two Vector2s.
+---@param source Vector2 the position to interpolate from.
+---@param target Vector2 the position to interpolate to.
+---@param alpha number the alpha value to interpolate by. (0 being source, 1 being target, 0.5 being halfway between source and target, though, not limited to 0-1.)
+---@return Vector2 interpolated_vector the vector created from the interpolation of the two vectors.
+function Vector2.lerp(source, target, alpha)
+	-- Get the inverted alpha for multiplying the source.
+	local inverted_alpha = 1 - alpha
+
+	-- Create the vector
+	local interpolated_vector = Vector2.add(
+		Vector2.scalarMultiply(source, inverted_alpha),
+		Vector2.scalarMultiply(target, alpha)
+	)
+
+	-- Return the vector
+	return interpolated_vector
+end
+ -- custom Vector2 functions
+--[[
+	
+Copyright 2025 Liam Matthews
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+]]
+
+-- Library Version 0.0.4
+
+--[[
+
+
+	Library Setup
+
+
+]]
+
+-- required libraries
+
+---@diagnostic disable:duplicate-doc-field
+---@diagnostic disable:duplicate-doc-alias
+---@diagnostic disable:duplicate-set-field
+
+--[[ 
+	Contains some code for math on Vector 3s, as in, a 3D vector.
+]]
+
+-- library name
+Vector3 = {}
+
+--[[
+
+
+	Classes
+
+
+]]
+
+---@class Vector3
+---@field x number x axis
+---@field y number y axis (up/down)
+---@field z number z axis
+
+--[[
+
+
+	Variables
+
+
+]]
+
+--[[
+
+
+	Functions
+
+
+]]
+
+--- Function for creating a new Vector3
+---@param x number
+---@param y number
+---@param z number
+---@return Vector3
+function Vector3.new(x, y, z)
+	-- create the vector
+	local vector = {
+		x = x,
+		y = y,
+		z = z
+	}
+
+	-- return the vector
+	return vector
+end
+
+
+--- Function for turning a Matrix into a Vector3
+---@param target_matrix SWMatrix
+---@param raw_coordinates boolean? whether or not to return the raw coordinates of the matrix (true), or the transformed coordinates (false/nil).
+---@return Vector3 vector the vector created from the matrix.
+function Vector3.fromMatrix(target_matrix, raw_coordinates)
+	-- if raw_coordinates is true
+	if raw_coordinates then
+		-- return the raw coordinates
+		return {
+			x = target_matrix[13],
+			y = target_matrix[14],
+			z = target_matrix[15]
+		}
+	end
+
+	--* raw coordinates is false, return the transformed coordinates
+
+	-- get transformed coordinates (I assume this function properly applies the rotations, scaling, etc to the matrix.)
+	local x, y, z = matrix.position(target_matrix)
+
+	-- return the transformed coordinates
+	return {
+		x = x,
+		y = y,
+		z = z
+	}
+end
+
+--- Function for turning a Vector3 into a Matrix
+---@param target_vector Vector3
+---@return SWMatrix matrix the matrix created from the vector.
+function Vector3.toMatrix(target_vector)
+	-- create and return the matrix
+	return {
+		1,
+		0,
+		0,
+		0,
+		0,
+		1,
+		0,
+		0,
+		0,
+		0,
+		1,
+		0,
+		target_vector.x,
+		target_vector.y,
+		target_vector.z,
+		1
+	}
+end
+
+--- Function for getting the euclidean distance
+---@param a Vector3
+---@param b Vector3
+---@return number euclidean_distance euclidean distance between the two 3D vectors.
+function Vector3.euclideanDistance(a, b)
+	-- get the relative x position
+	local rx = a.x - b.x
+
+	-- get the relative y position
+	local ry = a.y - b.y
+
+	-- get the relative z position
+	local rz = a.z - b.z
+
+	-- return the distance
+	return math.sqrt(rx*rx+ry*ry+rz*rz)
+end
+
+--- Function for getting the manhattan distance
+---@param a Vector3
+---@param b Vector3
+---@return number manhattan_distance manhattan distance between the two 3D vectors.
+function Vector3.manhattanDistance(a, b)
+	-- return the distance
+	return (
+		math.abs(a.x - b.x) + -- get manhattan distance on x axis
+		math.abs(a.y - b.y) + -- get manhattan distance on y axis
+		math.abs(a.z - b.z) -- get manhattan distance on z axis
+	)
+end
+
+-- Function for adding two Vector3s.
+---@param a Vector3 the first vector to add.
+---@param b Vector3 the second vector to add.
+---@return Vector3 added_vector the vector created from the addition of the two vectors.
+function Vector3.add(a, b)
+	-- create the vector
+	local added_vector = {
+		x = a.x + b.x,
+		y = a.y + b.y,
+		z = a.z + b.z
+	}
+
+	-- return the vector
+	return added_vector
+end
+
+-- Function for subtracting two Vector3s.
+---@param a Vector3 the vector to subtract from.
+---@param b Vector3 the vector to subtract.
+---@return Vector3 subtracted_vector the vector created from the subtraction of the two vectors.
+function Vector3.subtract(a, b)
+	-- create the vector
+	local subtracted_vector = {
+		x = a.x - b.x,
+		y = a.y - b.y,
+		z = a.z - b.z
+	}
+
+	-- return the vector
+	return subtracted_vector
+end
+
+-- Function for multiplying two Vector3s.
+---@param a Vector3 the first vector to multiply.
+---@param b Vector3 the second vector to multiply.
+---@return Vector3 multiplied_vector the vector created from the multiplication of the two vectors.
+function Vector3.multiply(a, b)
+	-- create the vector
+	local multiplied_vector = {
+		x = a.x * b.x,
+		y = a.y * b.y,
+		z = a.z * b.z
+	}
+
+	-- return the vector
+	return multiplied_vector
+end
+
+-- Function for dividing two Vector3s.
+---@param a Vector3 the vector to divide.
+---@param b Vector3 the vector to divide by.
+---@return Vector3 divided_vector the vector created from the division of the two vectors.
+function Vector3.divide(a, b)
+	-- create the vector
+	local divided_vector = {
+		x = a.x / b.x,
+		y = a.y / b.y,
+		z = a.z / b.z
+	}
+
+	-- return the vector
+	return divided_vector
+end
+
+--- Function for doing a scalar multiplication on a vector.
+---@param vector Vector3 the vector to multiply.
+---@param scalar number the scalar to multiply the vector by.
+---@return Vector3 multiplied_vector the vector created from the multiplication of the vector by the scalar.
+function Vector3.scalarMultiply(vector, scalar)
+	-- create the vector
+	local multiplied_vector = {
+		x = vector.x * scalar,
+		y = vector.y * scalar,
+		z = vector.z * scalar
+	}
+
+	-- return the vector
+	return multiplied_vector
+end
+
+--- Function for linearly interpolating between two Vector3s.
+---@param source Vector3 the position to interpolate from.
+---@param target Vector3 the position to interpolate to.
+---@param alpha number the alpha value to interpolate by. (0 being source, 1 being target, 0.5 being halfway between source and target, though, not limited to 0-1.)
+---@return Vector3 interpolated_vector the vector created from the interpolation of the two vectors.
+function Vector3.lerp(source, target, alpha)
+	-- Get the inverted alpha for multiplying the source.
+	local inverted_alpha = 1 - alpha
+
+	-- Create the vector
+	local interpolated_vector = Vector3.add(
+		Vector3.scalarMultiply(source, inverted_alpha),
+		Vector3.scalarMultiply(target, alpha)
+	)
+
+	-- Return the vector
+	return interpolated_vector
+end
+ -- custom Vector3 functions -- custom string functions -- custom table functions
 
 --[[
 		Functions
@@ -13151,6 +13797,7 @@ function setupMain(is_world_create)
 	-- checks for Vanilla Conquest Mode addon
 	local _, is_success = s.getAddonIndex("DLC Weapons AI")
 	if is_success then
+		d.print("setupMain detected DLC Weapons AI at index "..tostring(_))
 		g_savedata.info.addons.default_conquest_mode = true
 		is_dlc_weapons = false
 	end
@@ -13514,7 +14161,7 @@ function setupMain(is_world_create)
 
 			d.print("spawning initial ai vehicles...", true, 0)
 				
-			for i = 1, g_savedata.settings.AI_INITIAL_SPAWN_COUNT * math.ceil(math.min(math.max(g_savedata.settings.AI_INITIAL_ISLAND_AMOUNT, 1), #g_savedata.islands - 1)/2) do
+			for i = 1, g_savedata.settings.AI_INITIAL_SPAWN_COUNT * math.ceil(math.clamp(g_savedata.settings.AI_INITIAL_ISLAND_AMOUNT, 1, #g_savedata.islands - 1)/2) do
 				v.spawnRetry(nil, nil, true, nil, nil, 5) -- spawn initial ai
 			end
 			d.print("all initial ai vehicles spawned!")
@@ -13917,7 +14564,7 @@ end
 function cleanVehicle(squad_index, group_id)
 
 	-- get the squadron
-	local squadron = g_savedata.ai_army.squadrons[squad_index]
+	local squadron = Squad.getSquadFromIndex(squad_index)
 
 	-- squadron does not exist
 	if not squadron then
@@ -13934,6 +14581,7 @@ function cleanVehicle(squad_index, group_id)
 		return
 	end
 
+	-- Cleanup the vehicle's map debug
 	d.print("cleaning vehicle: "..group_id, true, 0)
 
 	s.removeMapObject(-1, vehicle_object.ui_id)
@@ -13968,14 +14616,17 @@ function cleanVehicle(squad_index, group_id)
 		end
 	end
 
+	-- Despawn all survivors
 	for _, object_id in pairs(vehicle_object.survivors) do
 		s.despawnObject(object_id, true)
 	end
 
+	-- Despawn all fires
 	if vehicle_object.fire_id ~= nil then
 		s.despawnObject(vehicle_object.fire_id, true)
 	end
 
+	-- TODO: Potentially can be replaced by Squad.removeVehicle
 	g_savedata.ai_army.squadrons[squad_index].vehicles[group_id] = nil
 	g_savedata.ai_army.squad_vehicles[group_id] = nil -- reset squad vehicle list
 
@@ -13983,8 +14634,10 @@ function cleanVehicle(squad_index, group_id)
 		if table.length(g_savedata.ai_army.squadrons[squad_index].vehicles) <= 0 then -- squad has no more vehicles
 			g_savedata.ai_army.squadrons[squad_index] = nil
 
+			-- If theres no more vehicles, then there should be no island assigned to this squad??
 			for island_index, island in pairs(g_savedata.islands) do
 				if island.assigned_squad_index == squad_index then
+					d.print("This actually gets called", true, 0)
 					island.assigned_squad_index = -1
 				end
 			end

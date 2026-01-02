@@ -139,19 +139,17 @@ end
 ---@param y1 number? y coordinate of position 1 (exclude for 2D distance, include for 3D distance)
 ---@param y2 number? y coordinate of position 2 (exclude for 2D distance, include for 3D distance)
 ---@return number distance the euclidean distance between position 1 and position 2
-function math.euclideanDistance(...)
-	local c = table.pack(...)
+function math.euclideanDistance(x1,x2,z1,z2,y1,y2)
+	local rx = x1 - x2
+	local rz = z1 - z2
 
-	local rx = c[1] - c[2]
-	local rz = c[3] - c[4]
-
-	if c.n == 4 then
+	if y1 == nil or y2 == nil then
 		-- 2D distance
 		return math.sqrt(rx*rx+rz*rz)
 	end
 
 	-- 3D distance
-	local ry = c[5] - c[6]
+	local ry = y1 - y2
 	return math.sqrt(rx*rx+ry*ry+rz*rz)
 end
 
@@ -163,22 +161,21 @@ end
 ---@param y2 number? y coordinate of position 2 (exclude to just get yaw, include to get yaw and pitch)
 ---@return number yaw the yaw needed to face position 2 from position 1
 ---@return number pitch the pitch needed to face position 2 from position 1, will return 0 if y not specified.
-function math.angleToFace(...)
-	local c = table.pack(...)
+function math.angleToFace(x1,x2,z1,z2,y1,y2)
 
 	-- relative x coordinate
-	local rx = c[1] - c[2]
+	local rx = x1 - x2
 	-- relative z coordinate
-	local rz = c[3] - c[4]
+	local rz = z1 - z2
 
 	local yaw = math.atan(rz, rx) - math.half_pi
 
-	if c.n == 4 then
+	if y1 == nil or y2 == nil then
 		return yaw, 0
 	end
 
 	-- relative y
-	local ry = c[5] - c[6]
+	local ry = y1 - y2
 
 	local pitch = -math.atan(ry, math.sqrt(rx * rx + rz * rz))
 

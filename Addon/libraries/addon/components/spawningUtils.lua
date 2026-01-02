@@ -97,6 +97,7 @@ function SpawningUtils.spawnObject(spawn_transform, addon_index, location_index,
 		if Tags.has(component_data.tags, "type=dlc_weapons_flag") then
 			--TODO: Check if this is even used anymore?
 			--l_vehicle_type = "flag"
+			d.print("(su.spawnObject) Spawned a flag vehicle!", true, 0)
 		end
 
 		local object_data = {

@@ -62,20 +62,19 @@ function Squad.getSquadFromGroup(group_id)
 		if squad then
 			return squad_index, squad
 		else
-			--d.print("(Squad.getSquadFromGroup) failed to get squad for squad with id "..tostring(squad_index), true, 1)
 			return squad_index, nil
 		end
 	else
 		-- This is a band-aid fix, and it should be patched at its source since this shouldn't ever happen in the first place.
-		-- Related to cargo convoy spaw?
+		-- Related to cargo convoy spawn?
 		for i, squad in pairs(g_savedata.ai_army.squadrons) do
 			if squad.vehicles[group_id] then
-				--d.print("(Squad.getSquadFromGroup) squad recovered at index "..tostring(i).." for group with id "..tostring(group_id), true, 1)
+				d.print("(Squad.getSquadFromGroup) squad recovered at index "..tostring(i).." for group with id "..tostring(group_id), true, 1)
 				g_savedata.ai_army.squad_vehicles[group_id] = i
 				return i, squad
 			end
 		end
-		--d.print("(Squad.getSquadFromGroup) failed to get squad_index for group with id "..tostring(group_id)..". Recovery failed", true, 1)
+		d.print("(Squad.getSquadFromGroup) failed to get squad_index for group with id "..tostring(group_id)..". Recovery failed", true, 1)
 		return nil, nil
 	end
 end
@@ -212,7 +211,7 @@ end
 --- Removes a vehicle from the specified squad. If this is the last vehicle in the squad, the squad will be automatically disbanded
 --- @param squad squadron the squad to remove the vehicle from
 --- @param vehicle_object vehicle_object the vehicle to remove from the squad
---- @param is_disbanding boolean? if the vehicle is being removed because the squad is being disbanded. This is used internally to prevent a infinite loop when disbanding a squad
+--- @param is_disbanding boolean? if the vehicle is being removed because the squad is being disbanded. This is used internally to prevent extra disband calls when disbanding
 --- @return boolean success if the removal was successful
 function Squad.removeVehicle(squad, vehicle_object, is_disbanding)
 	if not squad then
@@ -292,7 +291,7 @@ end
 --- @param command SQUAD_COMMAND
 --- @vararg nil
 --- @return boolean success if the command was successfully set. If false, then either the parameters are invalid or theres a restriction blocking it
---- @overload fun(squad:squadron, command:"attack"|"stage"|"defend"|"patrol", target_island: AnyIsland):boolean
+--- @overload fun(squad:squadron, command:"attack"|"stage"|"defend"|"patrol", target_island: ANY_ISLAND):boolean
 --- @overload fun(squad:squadron, command:"investigate", investigate_transform: SWMatrix):boolean
 function Squad.setCommand(squad, command, ...)
 	-- Input validation
@@ -443,30 +442,28 @@ function Squad.canJoinSquad(squad, vehicle_object)
 		d.print("(Squad.canJoinSquad) vehicle_object is nil!", true, 1)
 		return false
 	end
-	local squad_leader = Squad.getLeader(squad)
-	if not squad_leader then
-		-- TODO: Might cause issues if the squad is empty
-		d.print("(Squad.canJoinSquad) squad leader is nil!", true, 1)
-		return false
-	end
 	
 	-- Must be of the same vehicle type
-	if squad_leader.vehicle_type ~= vehicle_object.vehicle_type then
+	if squad.vehicle_type ~= vehicle_object.vehicle_type then
 		return false
 	end
 	
 	-- Must be of the same role
-	if squad_leader.role ~= vehicle_object.role then
+	if squad.role ~= vehicle_object.role then
 		return false
 	end
 	
 	-- Land vehicles must be able be access eachother (ie, a vehicle in arid cant join a squad in sawyer)
-	if squad_leader.vehicle_type == VEHICLE.TYPE.LAND then
-		-- Get the land mass that the squad leader is on
-		local leader_land_access = Tags.getValue(squad_leader.home_island.tags, "land_access", true)
-		local vehicle_land_access = Tags.getValue(vehicle_object.home_island.tags, "land_access", true)
-		if leader_land_access ~= vehicle_land_access then
-			return false
+	if squad.vehicle_type == VEHICLE.TYPE.LAND then
+		-- Get the squad leader, if there is no squad leader then skip this check
+		local squad_leader = Squad.getLeader(squad)
+		if squad_leader then
+			-- Get the land mass that the squad leader is on
+			local leader_land_access = Tags.getValue(squad_leader.home_island.tags, "land_access", true)
+			local vehicle_land_access = Tags.getValue(vehicle_object.home_island.tags, "land_access", true)
+			if leader_land_access ~= vehicle_land_access then
+				return false
+			end
 		end
 	end
 	

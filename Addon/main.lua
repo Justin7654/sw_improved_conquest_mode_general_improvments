@@ -415,6 +415,8 @@ require("libraries.icm.vehicles.vehicle") -- functions related to vehicles, and 
 
 require("libraries.utils.executionQueue") -- functions for queuing functions for conditions to be met.
 require("libraries.utils.math") -- custom math functions
+require("libraries.utils.vector2") -- custom Vector2 functions
+require("libraries.utils.vector3") -- custom Vector3 functions
 require("libraries.utils.string") -- custom string functions
 require("libraries.utils.tables") -- custom table functions
 
@@ -671,6 +673,7 @@ function setupMain(is_world_create)
 	-- checks for Vanilla Conquest Mode addon
 	local _, is_success = s.getAddonIndex("DLC Weapons AI")
 	if is_success then
+		d.print("setupMain detected DLC Weapons AI at index "..tostring(_))
 		g_savedata.info.addons.default_conquest_mode = true
 		is_dlc_weapons = false
 	end
@@ -1034,7 +1037,7 @@ function setupMain(is_world_create)
 
 			d.print("spawning initial ai vehicles...", true, 0)
 				
-			for i = 1, g_savedata.settings.AI_INITIAL_SPAWN_COUNT * math.ceil(math.min(math.max(g_savedata.settings.AI_INITIAL_ISLAND_AMOUNT, 1), #g_savedata.islands - 1)/2) do
+			for i = 1, g_savedata.settings.AI_INITIAL_SPAWN_COUNT * math.ceil(math.clamp(g_savedata.settings.AI_INITIAL_ISLAND_AMOUNT, 1, #g_savedata.islands - 1)/2) do
 				v.spawnRetry(nil, nil, true, nil, nil, 5) -- spawn initial ai
 			end
 			d.print("all initial ai vehicles spawned!")
@@ -1437,7 +1440,7 @@ end
 function cleanVehicle(squad_index, group_id)
 
 	-- get the squadron
-	local squadron = g_savedata.ai_army.squadrons[squad_index]
+	local squadron = Squad.getSquadFromIndex(squad_index)
 
 	-- squadron does not exist
 	if not squadron then
@@ -1454,6 +1457,7 @@ function cleanVehicle(squad_index, group_id)
 		return
 	end
 
+	-- Cleanup the vehicle's map debug
 	d.print("cleaning vehicle: "..group_id, true, 0)
 
 	s.removeMapObject(-1, vehicle_object.ui_id)
@@ -1488,14 +1492,17 @@ function cleanVehicle(squad_index, group_id)
 		end
 	end
 
+	-- Despawn all survivors
 	for _, object_id in pairs(vehicle_object.survivors) do
 		s.despawnObject(object_id, true)
 	end
 
+	-- Despawn all fires
 	if vehicle_object.fire_id ~= nil then
 		s.despawnObject(vehicle_object.fire_id, true)
 	end
 
+	-- TODO: Potentially can be replaced by Squad.removeVehicle
 	g_savedata.ai_army.squadrons[squad_index].vehicles[group_id] = nil
 	g_savedata.ai_army.squad_vehicles[group_id] = nil -- reset squad vehicle list
 
@@ -1503,8 +1510,10 @@ function cleanVehicle(squad_index, group_id)
 		if table.length(g_savedata.ai_army.squadrons[squad_index].vehicles) <= 0 then -- squad has no more vehicles
 			g_savedata.ai_army.squadrons[squad_index] = nil
 
+			-- If theres no more vehicles, then there should be no island assigned to this squad??
 			for island_index, island in pairs(g_savedata.islands) do
 				if island.assigned_squad_index == squad_index then
+					d.print("This actually gets called", true, 0)
 					island.assigned_squad_index = -1
 				end
 			end

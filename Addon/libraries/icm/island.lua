@@ -9,7 +9,6 @@ Island = {}
 -- shortened library name
 is = Island
 
---- @alias AnyIsland ISLAND|AI_ISLAND|PLAYER_ISLAND TODO: REMOVE
 --- @alias ANY_ISLAND ISLAND|AI_ISLAND|PLAYER_ISLAND
 
 -- checks if this island can spawn the specified vehicle
@@ -94,7 +93,7 @@ end
 
 --# returns the island data from the provided island index (warning: if you modify the returned data, it will not apply anywhere else, and will be local to that area.)
 ---@param island_index integer the island index you want to get
----@return AnyIsland island the island data from the index
+---@return ANY_ISLAND island the island data from the index
 ---@return boolean island_found returns true if the island was found
 function Island.getDataFromIndex(island_index)
 	if not island_index then -- if the island_index wasn't specified

@@ -94,11 +94,12 @@ Command.registerCommand(
             d.print("Error: No vehicle group id provided!", false, 0, peer_id)
             return
         end
-        if type(arg[1] ) ~= "number" then
+		local group_id = tonumber(arg[1])
+        if not group_id then
             d.print("Error: Vehicle group id must be a number!", false, 0, peer_id)
             return
         end
-		server.resetVehicleState(arg[1])
+		server.resetVehicleState(group_id)
 	end,
 	"admin",
 	"this lets you reset an ai vehicle's state, such as holding, stationary, ect",

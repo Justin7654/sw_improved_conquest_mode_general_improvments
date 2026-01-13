@@ -516,7 +516,7 @@ Command.registerCommand(
 		end
 
 		s.addMapLabel(peer_id, ui_id, 2, "Path Preview", x, z)
-		d.print(("Drew path preview with %d nodes (%s). Use ?impwep clear_path_preview to remove."):format(#path, required_tags), false, 0, peer_id)
+		d.print(("Drew path preview with %d nodes (%s). Use ?impwep clear_test_path to remove."):format(#path, required_tags), false, 0, peer_id)
 	end,
 	"admin",
 	"Pathfinds from your position to specified coordinates as shows it on the map. Used for debugging purposes.",

@@ -71,6 +71,12 @@ s_fluid_types = {
 ---@field diesel number the weight for diesel
 ---@field jet_fuel number the weight for jet fuel
 
+---@class ICMRouteSegment
+---@field island_index integer the index of the island to travel to
+---@field transport_method PREFAB_DATA|{name: string, movement_speed: number} the vehicle prefab to use for transport
+---@field transport_type "heli"|"land"|"plane"|"sea" the type of transport
+
+
 
 --[[
 
@@ -269,7 +275,7 @@ function Cargo.getEscortWeight(cargo_vehicle, escort_vehicle) --* get the weight
 	end
 
 	-- calculate weight based on difference of speed
-	speed_weight = v.getSpeed(cargo_vehicle) - v.getSpeed(escort_vehicle)
+	speed_weight = v.getTargetSpeed(cargo_vehicle) - v.getTargetSpeed(escort_vehicle)
 	
 	--? if the escort vehicle is slower, then make it affect the weight more
 	if speed_weight > 0 then
@@ -910,7 +916,7 @@ end
 
 ---@param origin_island ISLAND|AI_ISLAND the island of which the cargo is coming from
 ---@param dest_island ISLAND|AI_ISLAND the island of which the cargo is going to
----@return route[] best_route the best route to go from the origin to the destination
+---@return ICMRouteSegment[] best_route the best route to go from the origin to the destination
 function Cargo.getBestRoute(origin_island, dest_island) -- origin = resupplier island | dest = resupply island
 	local start_time = s.getTimeMillisec()
 
@@ -1306,7 +1312,7 @@ function Cargo.getBestRoute(origin_island, dest_island) -- origin = resupplier i
 				end
 			end
 
-			if first_route_time > best_route_time then
+			if first_route_time > best_route_time or not first_route.island_index then
 				goto break_first_island
 			end
 
@@ -1337,7 +1343,7 @@ function Cargo.getBestRoute(origin_island, dest_island) -- origin = resupplier i
 						end
 					end
 
-					if second_route_time + first_route_time > best_route_time then
+					if second_route_time + first_route_time > best_route_time or not second_route.island_index then
 						goto break_second_island
 					end
 
@@ -1369,7 +1375,7 @@ function Cargo.getBestRoute(origin_island, dest_island) -- origin = resupplier i
 								end
 							end
 
-							if third_route_time + second_route_time + first_route_time > best_route_time then
+							if third_route_time + second_route_time + first_route_time > best_route_time or not third_route.island_index then
 								goto break_third_island
 							end
 
@@ -1617,6 +1623,29 @@ Command.registerCommand(
 	"admin",
 	"queues a convoy to be sent out, will be sent out once theres not any convoys",
 	"queues a convoy",
+	{""}
+)
+
+Command.registerCommand(
+	"convoycooldown",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		local rate = RULES.LOGISTICS.CARGO.VEHICLES.spawn_time
+		local offset = g_savedata.tick_extensions.cargo_vehicle_spawn or 0
+		local ticks_remaining = (rate - ((g_savedata.tick_counter + offset) % rate)) % rate
+		local time_remaining = ticks_remaining / time.second
+		if time_remaining > 60 then
+			time_remaining = ticks_remaining / time.minute
+			d.print("Current convoy cooldown: "..math.ceil(time_remaining).." minutes", false, 0, peer_id)
+		else
+			d.print("Current convoy cooldown: "..math.ceil(time_remaining).." seconds", false, 0, peer_id)
+		end
+	end,
+	"admin",
+	"Prints the time remaining until the next convoy can be sent out",
+	"prints the current convoy cooldown",
 	{""}
 )
 

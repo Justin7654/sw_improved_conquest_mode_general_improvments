@@ -1766,7 +1766,7 @@ function onVehicleLoad(vehicle_id)
 							v.kill(vehicle_object, true, true)
 							return
 						else
-							v.teleport(vehicle_object, m.translation(vehicle_object.path[2].x, vehicle_object.path[2].y, vehicle_object.path[2].z))
+							v.teleport(vehicle_object.group_id, m.translation(vehicle_object.path[2].x, vehicle_object.path[2].y, vehicle_object.path[2].z))
 							break
 						end
 					end
@@ -2687,6 +2687,7 @@ function transferToSquadron(vehicle_object, squad_index, force)
 	d.print("(transferToSquadron) Transferred "..vehicle_object.name.."("..vehicle_object.group_id..") from squadron "..tostring(old_squad_index).." to "..squad_index, true, 0)
 end
 
+---@deprecated
 function addToSquadron(vehicle_object)
 	if vehicle_object then
 		if not vehicle_object.is_killed then
@@ -2975,7 +2976,7 @@ function tickSquadrons(game_ticks)
 										-- set which vehicle we are waiting for
 										vehicle_object.state.convoy.waiting_for = convoy_index - 1
 										-- set the vehicle's speed to be 0
-										vehicle_object.speed.convoy_modifier = -(v.getSpeed(vehicle_object, nil, nil, nil, nil, true))
+										vehicle_object.speed.convoy_modifier = -(v.getTargetSpeed(vehicle_object, nil, nil, nil, nil, true))
 										-- set why its waiting
 										local status_reason = behind_too_far and "waiting_for_behind" or "behind_is_waiting"
 										vehicle_object.state.convoy.status_reason = status_reason
@@ -3004,7 +3005,7 @@ function tickSquadrons(game_ticks)
 									local dist_speed_modifier = 1/math.clamp((behind_dist - dist)/(RULES.LOGISTICS.CONVOY[vehicle_object.vehicle_type].min_distance*2), 0.5, 1)
 									--d.print("dist_speed_modifier: "..dist_speed_modifier, true, 0)
 
-									local vehicle_speed = v.getSpeed(vehicle_object, nil, nil, nil, nil, true)
+									local vehicle_speed = v.getTargetSpeed(vehicle_object, nil, nil, nil, nil, true)
 
 									vehicle_object.speed.convoy_modifier = ((vehicle_speed * dist_speed_modifier) - vehicle_speed)/1.5
 
@@ -3044,7 +3045,7 @@ function tickSquadrons(game_ticks)
 										-- set which vehicle we are waiting for
 										vehicle_object.state.convoy.waiting_for = convoy_index + 1
 										-- set the vehicle's speed to be 0
-										vehicle_object.speed.convoy_modifier = -(v.getSpeed(vehicle_object, nil, nil, nil, nil, true))
+										vehicle_object.speed.convoy_modifier = -(v.getTargetSpeed(vehicle_object, nil, nil, nil, nil, true))
 										-- set why its waiting
 										local status_reason = ahead_too_far and "waiting_for_ahead" or "ahead_is_waiting"
 										vehicle_object.state.convoy.status_reason = status_reason
@@ -3068,7 +3069,7 @@ function tickSquadrons(game_ticks)
 
 									local dist_speed_modifier = 1/math.clamp((ahead_dist - dist)/(RULES.LOGISTICS.CONVOY[vehicle_object.vehicle_type].max_distance/2), 0.5, 1)
 
-									local vehicle_speed = v.getSpeed(vehicle_object, nil, nil, nil, nil, true)
+									local vehicle_speed = v.getTargetSpeed(vehicle_object, nil, nil, nil, nil, true)
 
 									vehicle_object.speed.convoy_modifier = ((vehicle_speed * dist_speed_modifier) - vehicle_speed)/1.5
 
@@ -3254,20 +3255,20 @@ function tickSquadrons(game_ticks)
 				
 
 			elseif squad.command == SQUAD.COMMAND.PATROL then
-				local squad_leader_id, squad_leader = getSquadLeader(squad)
+				local squad_leader = Squad.getLeader(squad)
 				if squad_leader then
 					if squad_leader.state.s ~= VEHICLE.STATE.PATHING then -- has finished patrol
 						d.print("patrol squad leader of squad finished pathing", true, 0)
-						setSquadCommand(squad, SQUAD.COMMAND.NONE)
+						Squad.setCommand(squad, SQUAD.COMMAND.NONE)
 					end
 				else
 					if squad_index ~= RESUPPLY_SQUAD_INDEX then
 						d.print("patrol squad missing leader", true, 1)
 						d.print("deleting squad as its empty", true, 1)
 						g_savedata.ai_army.squadrons[squad_index] = nil
-						setSquadCommand(squad, SQUAD.COMMAND.NONE)
+						Squad.setCommand(squad, SQUAD.COMMAND.NONE)
 					else
-						setSquadCommand(squad, SQUAD.COMMAND.RESUPPLY)
+						Squad.setCommand(squad, SQUAD.COMMAND.RESUPPLY)
 					end
 				end
 			elseif squad.command == SQUAD.COMMAND.STAGE then
@@ -3290,9 +3291,9 @@ function tickSquadrons(game_ticks)
 				end
 
 				if squad.target_island == nil then
-					setSquadCommand(squad, SQUAD.COMMAND.NONE)
+					Squad.setCommand(squad, SQUAD.COMMAND.NONE)
 				elseif squad.target_island.faction ~= ISLAND.FACTION.AI then
-					setSquadCommand(squad, SQUAD.COMMAND.NONE)
+					Squad.setCommand(squad, SQUAD.COMMAND.NONE)
 				end
 			elseif squad.command == SQUAD.COMMAND.RESUPPLY then
 
@@ -3355,7 +3356,7 @@ function tickSquadrons(game_ticks)
 						squad.investigate_transform = nil
 					end
 				else
-					setSquadCommand(squad, SQUAD.COMMAND.NONE)
+					Squad.setCommand(squad, SQUAD.COMMAND.NONE)
 				end
 			end
 
@@ -3597,7 +3598,7 @@ function tickSquadrons(game_ticks)
 				end
 
 				if squad_vision:is_engage() == false then
-					setSquadCommand(squad, SQUAD.COMMAND.NONE)
+					Squad.setCommand(squad, SQUAD.COMMAND.NONE)
 				end
 			end
 		end
@@ -3936,7 +3937,7 @@ function tickVehicles(game_ticks)
 
 					if vehicle_object.state.s == VEHICLE.STATE.PATHING then
 						
-						ai_speed_pseudo = v.getSpeed(vehicle_object)
+						ai_speed_pseudo = v.getTargetSpeed(vehicle_object)
 
 						if #vehicle_object.path == 0 then
 							AI.setState(vehicle_object, VEHICLE.STATE.HOLDING)
@@ -3971,7 +3972,7 @@ function tickVehicles(game_ticks)
 									-- if we have reached last waypoint start holding there
 									--d.print("set plane "..vehicle_id.." to holding", true, 0)
 									AI.setState(vehicle_object, VEHICLE.STATE.HOLDING)
-									d.print("Set vehicle "..vehicle_object.group_id.." to holding as it reached last waypoint", true, 0)
+									--d.print("Set vehicle "..vehicle_object.group_id.." to holding as it reached last waypoint", true, 0)
 								end
 							elseif vehicle_object.vehicle_type == VEHICLE.TYPE.BOAT and distance < WAYPOINT_CONSUME_DISTANCE then
 								if #vehicle_object.path > 0 then
@@ -4273,7 +4274,7 @@ function tickVehicles(game_ticks)
 					debug_data = debug_data.."Has Radar: "..(vehicle_object.vision.is_radar and "true" or "false").."\n"
 					debug_data = debug_data.."Has Sonar: "..(vehicle_object.vision.is_sonar and "true" or "false").."\n\n"
 
-					local ai_speed_pseudo = tostring(v.getSpeed(vehicle_object))
+					local ai_speed_pseudo = tostring(v.getTargetSpeed(vehicle_object))
 
 					debug_data = debug_data.."Pseudo Speed: "..ai_speed_pseudo.." m/s\n"
 					
@@ -4639,7 +4640,7 @@ function tickCargo(game_ticks)
 
 						d.print("(tickCargo) from island: "..resupplier_island.name, true, 0)
 						for route_index, route in ipairs(best_route) do
-							d.print("\n(tickCargo) Route Index: "..route_index, true, 0)
+							d.print("(tickCargo) Route Index: "..route_index, true, 0)
 							local island, got_island = is.getDataFromIndex(route.island_index)
 
 							-- check if we got the island.
@@ -4705,7 +4706,7 @@ function tickCargo(game_ticks)
 
 								-- getting slowest speed
 								d.print("Getting slowest speed for cargo vehicle "..tostring(vehicle_data.group_id), true, 0)
-								local vehicle_speed = v.getSpeed(vehicle_object, true, true)
+								local vehicle_speed = v.getTargetSpeed(vehicle_object, true, true)
 								if not g_savedata.cargo_vehicles[vehicle_data.group_id].path_data.speed or g_savedata.cargo_vehicles[vehicle_data.group_id].path_data.speed > vehicle_speed then
 									g_savedata.cargo_vehicles[vehicle_data.group_id].path_data.speed = vehicle_speed
 								end
@@ -4934,7 +4935,7 @@ function tickCargoVehicles(game_ticks)
 								for vehicle_index, vehicle_object in pairs(squad.vehicles) do
 
 									-- getting slowest speed
-									local vehicle_speed = v.getSpeed(vehicle_object, true, true)
+									local vehicle_speed = v.getTargetSpeed(vehicle_object, true, true)
 									if not g_savedata.cargo_vehicles[vehicle_data.group_id].path_data.speed or g_savedata.cargo_vehicles[vehicle_data.group_id].path_data.speed > vehicle_speed then
 										g_savedata.cargo_vehicles[vehicle_data.group_id].path_data.speed = vehicle_speed
 									end
@@ -5157,7 +5158,7 @@ function tickControls(game_ticks)
 				-- Angle to the scalar projected target position.
 				local target_angle = math.atan(target_pos.x - vehicle_object.transform[13], target_pos.z - vehicle_object.transform[15])
 
-				local speed = v.getSpeed(vehicle_object, true)
+				local speed = v.getTargetSpeed(vehicle_object, true)
 
 				local x_axis, y_axis, z_axis = m.getMatrixRotation(vehicle_object.transform)
 				--d.print("y_axis: "..y_axis, true, 0)
@@ -5602,6 +5603,7 @@ function squadInitVehicleCommand(squad, vehicle_object)
 			{ x=0, z=1000}
 		}
 		local patrol_route_size = math.random(100, 600)/100
+
 		for route_index, route in pairs(patrol_route) do
 			patrol_route[route_index].x = patrol_route[route_index].x * patrol_route_size
 			patrol_route[route_index].z = patrol_route[route_index].z * patrol_route_size

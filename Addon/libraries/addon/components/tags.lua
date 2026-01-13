@@ -37,7 +37,8 @@ end
 --- @param tags table<number, string> a table of tags to search through
 --- @param tag string the tag to search for
 --- @param as_string boolean? whether to return the value as a string instead of a number
---- @return number|string|nil value the value of the tag, nil if not found
+--- @overload fun(tags: table<number, string>, tag: string, as_string: true): string?
+--- @return number? value the value of the tag, nil if not found
 function Tags.getValue(tags, tag, as_string)
 	if type(tags) ~= "table" then
 		d.print("(Tags.getValue) was expecting a table, but got a "..type(tags).." instead! searching for tag: "..tag.." (this can be safely ignored)", true, 1)

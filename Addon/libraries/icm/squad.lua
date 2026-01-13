@@ -65,16 +65,6 @@ function Squad.getSquadFromGroup(group_id)
 			return squad_index, nil
 		end
 	else
-		-- This is a band-aid fix, and it should be patched at its source since this shouldn't ever happen in the first place.
-		-- Related to cargo convoy spawn?
-		for i, squad in pairs(g_savedata.ai_army.squadrons) do
-			if squad.vehicles[group_id] then
-				d.print("(Squad.getSquadFromGroup) squad recovered at index "..tostring(i).." for group with id "..tostring(group_id), true, 1)
-				g_savedata.ai_army.squad_vehicles[group_id] = i
-				return i, squad
-			end
-		end
-		d.print("(Squad.getSquadFromGroup) failed to get squad_index for group with id "..tostring(group_id)..". Recovery failed", true, 1)
 		return nil, nil
 	end
 end
@@ -83,12 +73,7 @@ end
 --- @param squad_index integer the index of the squad you want to get
 --- @return squadron? squad the info of the squad, if not found, then returns nil
 function Squad.getSquadFromIndex(squad_index)
-	local squad = g_savedata.ai_army.squadrons[squad_index]
-	if squad then
-		return squad
-	else
-		return nil
-	end
+	return g_savedata.ai_army.squadrons[squad_index]
 end
 
 ---
@@ -542,14 +527,40 @@ function Squad.transferToSquad(vehicle_object, new_squad_index, force)
 end
 
 --- Returns the best squad for a vehicle to join.
---- Only returns squads that the vehicle can join, and it takes the following into account whats the best:
---- - Distance 
---- - Squad size
---- 
---- **WIP - Does absolutely nothing currently and documentation is not complete**
-function Squad.getBestSquadForVehicle(vehicle_object, force)
-	local costs = {} ---@type table<integer, number>
-	for i, squad in pairs(g_savedata.ai_army.squadrons) do
-		
+--- The squad must be able to accept the vehicle, and it will only take the smallest squads into consideration.
+--- After getting the smallest squads, it will return the closest one to the vehicle.
+--- @param vehicle_object vehicle_object the vehicle you want to find a squad for
+--- @return squadron? squad the best squad for the vehicle to join, nil if no valid squads were found
+function Squad.getBestSquadForVehicle(vehicle_object)
+	-- Gets the squads which can be joined and is the smallest in the world
+	local canidates = {}
+	local smallest_size = math.huge
+	for _, squad in pairs(g_savedata.ai_army.squadrons) do
+		if Squad.canJoinSquad(squad, vehicle_object) then
+			if #squad.vehicles < smallest_size then
+				smallest_size = #squad.vehicles
+				canidates = {}
+			end
+			table.insert(canidates, squad)
+		end
 	end
+
+	if #canidates <= 0 then
+		return nil
+	end
+
+	-- Sort by distance to the vehicle
+	local vehicle_transform = vehicle_object.transform
+	table.sort(canidates, function(a, b)
+		local a_leader = Squad.getLeader(a)
+		local b_leader = Squad.getLeader(b)
+		if not a_leader then return false end -- Force it to the end if invalid for some reason
+		if not b_leader then return true end -- Force it to the end if invalid for some reason
+		local a_distance = matrix.xzDistance(vehicle_transform, a_leader.transform)
+		local b_distance = matrix.xzDistance(vehicle_transform, b_leader.transform)
+		return a_distance < b_distance
+	end)
+
+	-- Return the closest canidate
+	return canidates[1]
 end

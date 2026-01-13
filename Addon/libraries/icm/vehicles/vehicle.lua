@@ -28,16 +28,16 @@ v = Vehicle
 ---@param aggressiveness_override ?string \"normal" to override the speed as always normal, "aggressive" to override the speed as always aggressive (only applicable to land vehicles)
 ---@return number speed the speed of the vehicle, 0 if not found
 ---@return boolean got_speed if the speed was found
-function Vehicle.getSpeed(vehicle_object, ignore_terrain_type, ignore_aggressiveness, terrain_type_override, aggressiveness_override, ignore_convoy_modifier)
+function Vehicle.getTargetSpeed(vehicle_object, ignore_terrain_type, ignore_aggressiveness, terrain_type_override, aggressiveness_override, ignore_convoy_modifier)
 	if not vehicle_object then
-		d.print("(Vehicle.getSpeed) vehicle_object is nil!", true, 1)
+		d.print("(Vehicle.getTargetSpeed) vehicle_object is nil!", true, 1)
 		return 0, false
 	end
 
 	local _, squad = Squad.getSquadFromGroup(vehicle_object.group_id)
 
 	if not squad then
-		d.print("(Vehicle.getSpeed) squad is nil! vehicle_id: "..tostring(vehicle_object.group_id), true, 1)
+		d.print("(Vehicle.getTargetSpeed) squad is nil! vehicle_id: "..tostring(vehicle_object.group_id), true, 1)
 		return 0, false
 	end
 
@@ -794,7 +794,7 @@ function Vehicle.spawn(requested_prefab, vehicle_type, force_spawn, specified_is
 				is_sonar = Tags.has(selected_prefab.vehicle.tags, "sonar")
 			},
 			spawning_transform = {
-				distance = Tags.getValue(selected_prefab.vehicle.tags, "spawning_distance") or DEFAULT_SPAWNING_DISTANCE
+				distance = Tags.getValue(selected_prefab.vehicle.tags, "spawning_radius") or DEFAULT_SPAWNING_DISTANCE
 			},
 			speed = {
 				speed = Tags.getValue(selected_prefab.vehicle.tags, "speed") or 0,
@@ -818,7 +818,7 @@ function Vehicle.spawn(requested_prefab, vehicle_type, force_spawn, specified_is
 			just_strafed = true, -- used for fighter jet strafing
 			---@type string
 			strategy = Tags.getValue(selected_prefab.vehicle.tags, "strategy", true) --[[@as string]] or "general",
-			sink_depth = tonumber(Tags.getValue(selected_prefab.vehicle.tags, "sink_depth", true) or explosion_depths[spawned_objects.spawned_vehicle.vehicle_type] or -4),
+			sink_depth = Tags.getValue(selected_prefab.vehicle.tags, "sink_depth") or explosion_depths[spawned_objects.spawned_vehicle.vehicle_type] or -4,
 			can_offroad = Tags.has(selected_prefab.vehicle.tags, "can_offroad"),
 			is_resupply_on_load = false,
 			transform = spawn_transform --[[@as SWMatrix]],
@@ -838,11 +838,27 @@ function Vehicle.spawn(requested_prefab, vehicle_type, force_spawn, specified_is
 			vehicle_data.fire_id = spawned_objects.fires[1].id
 		end
 
-		local squad = addToSquadron(vehicle_data)
+		-- Add to a squad
+		local squad = Squad.getBestSquadForVehicle(vehicle_data)
+		if squad then
+			d.print("(Vehicle.spawn) adding vehicle to existing squad: "..squad.index, true, 0)
+			Squad.addVehicle(squad, vehicle_data)
+		else
+			d.print("(Vehicle.spawn) no valid squad found, will create a new squad for vehicle", true, 0)
+			local new_squad_index, squad_created = Squad.create(nil, vehicle_data)
+			squad = Squad.getSquadFromIndex(new_squad_index)
+			if not squad or not squad_created then
+				d.print("(Vehicle.spawn) failed to create new squad for vehicle!", true, 1)
+				return false, "failed to create new squad for vehicle"
+			end
+			Squad.addVehicle(squad, vehicle_data)
+		end
+
+		-- Set special vehicle commands based on vehicle role
 		if Tags.getValue(selected_prefab.vehicle.tags, "role", true) == "scout" then
-			setSquadCommand(squad, SQUAD.COMMAND.SCOUT)
+			Squad.setCommand(squad, SQUAD.COMMAND.SCOUT)
 		elseif Tags.getValue(selected_prefab.vehicle.tags, "vehicle_type", true) == "wep_turret" then
-			setSquadCommand(squad, SQUAD.COMMAND.TURRET)
+			Squad.setCommand(squad, SQUAD.COMMAND.TURRET)
 
 			-- set the zone it spawned at to say that a turret was spawned there
 			if g_savedata.islands[selected_spawn] then -- set at their island
@@ -852,7 +868,7 @@ function Vehicle.spawn(requested_prefab, vehicle_type, force_spawn, specified_is
 			end
 
 		elseif Tags.getValue(selected_prefab.vehicle.tags, "role", true) == "cargo" then
-			setSquadCommand(squad, SQUAD.COMMAND.CARGO)
+			Squad.setCommand(squad, SQUAD.COMMAND.CARGO)
 		end
 
 		local prefab, got_prefab = v.getPrefab(selected_prefab.location_data.name)

@@ -510,43 +510,6 @@ Command.registerCommand(
 	{""}
 )
 
--- capturepoint command
-Command.registerCommand(
-	"capturepoint",
-	---@param full_message string the full message
-	---@param peer_id integer the peer_id of the sender
-	---@param arg table the arguments of the command.
-	function(full_message, peer_id, arg)
-		if arg[1] and arg[2] then
-			local is_island = false
-			for island_index, island in pairs(g_savedata.islands) do
-				if island.name == string.gsub(arg[1], "_", " ") then
-					is_island = true
-					if island.faction ~= arg[2] then
-						if arg[2] == ISLAND.FACTION.AI or arg[2] == ISLAND.FACTION.NEUTRAL or arg[2] == ISLAND.FACTION.PLAYER then
-							captureIsland(island, arg[2], peer_id)
-						else
-							d.print(arg[2].." is not a valid faction! valid factions: | ai | neutral | player", false, 1, peer_id)
-						end
-					else
-						d.print(island.name.." is already set to "..island.faction..".", false, 1, peer_id)
-					end
-				end
-			end
-			if not is_island then
-				d.print(arg[1].." is not a valid island! Did you replace spaces with _?", false, 1, peer_id)
-			end
-		else
-			d.print("Invalid Syntax! command usage: ?impwep cp (island_name) (faction)", false, 1, peer_id)
-		end
-	end,
-	"admin",
-	"allows you to change who owns a specific island",
-	"allows you to change who owns a point",
-	{"North_Harbour ai"},
-	"(island_name) (\"ai\"|\"neutral\"|\"player\")"
-)
-
 -- aimod command
 Command.registerCommand(
 	"aimod",
@@ -1177,4 +1140,26 @@ Command.registerCommand(
 	"allows you to ignite an ai vehicle",
 	{"all", "102 10"},
 	"(vehicle_id)|\"all\" [size]"
+)
+
+Command.registerCommand(
+	"getgroupid",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		local vehicle_id = tonumber(arg[1])
+		if not vehicle_id then
+			d.print("vehicle_id must be a integer!", false, 1, peer_id)
+			return
+		end
+		local group_id = VehicleGroup.getGroupID(vehicle_id)
+
+		d.print("vehicle "..vehicle_id.." has group id: "..group_id, false, 0, peer_id)
+	end,
+	"admin",
+	"Converts a vehicle id to a group id. Used for debugging",
+	"vehicle id -> group id for debugging",
+	{"53"},
+	"<vehicle_id>"
 )

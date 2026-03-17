@@ -143,3 +143,40 @@ function Island.getDataFromName(island_name) -- function that gets the island by
 	end
 	return nil, false
 end
+
+-- capturepoint command
+Command.registerCommand(
+	"capturepoint",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg table the arguments of the command.
+	function(full_message, peer_id, arg)
+		if arg[1] and arg[2] then
+			local is_island = false
+			for island_index, island in pairs(g_savedata.islands) do
+				if island.name == string.gsub(arg[1], "_", " ") then
+					is_island = true
+					if island.faction ~= arg[2] then
+						if arg[2] == ISLAND.FACTION.AI or arg[2] == ISLAND.FACTION.NEUTRAL or arg[2] == ISLAND.FACTION.PLAYER then
+							captureIsland(island, arg[2], peer_id)
+						else
+							d.print(arg[2].." is not a valid faction! valid factions: | ai | neutral | player", false, 1, peer_id)
+						end
+					else
+						d.print(island.name.." is already set to "..island.faction..".", false, 1, peer_id)
+					end
+				end
+			end
+			if not is_island then
+				d.print(arg[1].." is not a valid island! Did you replace spaces with _?", false, 1, peer_id)
+			end
+		else
+			d.print("Invalid Syntax! command usage: ?impwep cp (island_name) (faction)", false, 1, peer_id)
+		end
+	end,
+	"admin",
+	"allows you to change who owns a specific island",
+	"allows you to change who owns a point",
+	{"North_Harbour ai"},
+	"(island_name) (\"ai\"|\"neutral\"|\"player\")"
+)

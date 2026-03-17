@@ -116,6 +116,7 @@ function Cargo.clean(group_id) -- cleans the data on the cargo vehicle if it exi
 			--* check if theres still vehicles in the squad, if so, set the squad's command to none
 			local squad_index, squad = Squad.getSquadFromGroup(group_id)
 			if squad_index and squad then
+				-- Can't use Squad.setCommand as it doesn't allow removing the CARGO command
 				g_savedata.ai_army.squadrons[squad_index].command = SQUAD.COMMAND.NONE
 			end
 
@@ -123,10 +124,13 @@ function Cargo.clean(group_id) -- cleans the data on the cargo vehicle if it exi
 			-- if there is, delete it to avoid a softlock
 			if g_savedata.cargo_vehicles[cargo_vehicle_index+1] then
 				if g_savedata.cargo_vehicles[cargo_vehicle_index+1].route_status == 3 then
+					d.print("(Cargo.clean) convoy vehicle "..tostring(g_savedata.cargo_vehicles[cargo_vehicle_index+1].vehicle_data.group_id).." was waiting for vehicle "..tostring(group_id)..", removing to prevent deadlock.", true, 1)
 					local squad_index, squad = Squad.getSquadFromGroup(g_savedata.cargo_vehicles[cargo_vehicle_index+1].vehicle_data.group_id)
 
 					if squad_index then
 						v.kill(g_savedata.cargo_vehicles[cargo_vehicle_index+1].vehicle_data, true, true)
+					else
+						d.print("(Cargo.clean) removal failed, squad_index was nil!", true, 1)
 					end
 				end
 			end
@@ -294,8 +298,9 @@ function Cargo.getEscortWeight(cargo_vehicle, escort_vehicle) --* get the weight
 	return weight
 end
 
+--- Adds up the total amount of cargo a vehicle has in its tanks
 --- @param group_id number the group's id
---- @return table|nil cargo the contents of the cargo vehicle's tanks
+--- @return requestedCargo? cargo the contents of the cargo vehicle's tanks
 --- @return boolean got_tanks wether or not we were able to get the tanks
 function Cargo.getTank(group_id)
 
@@ -712,7 +717,7 @@ function Cargo.getBestResupplyIsland()
 end
 
 ---@param resupply_weights ICMResupplyWeights the weights of all of the cargo types for the resupply island
----@return ISLAND island the resupplier island
+---@return ISLAND|AI_ISLAND island the resupplier island
 ---@return ICMResupplyWeights resupplier_weights the weights of all the cargo types for the resupplier island, sorted from most to least weight
 function Cargo.getBestResupplierIsland(resupply_weights)
 
@@ -763,8 +768,8 @@ function Cargo.getBestResupplierIsland(resupply_weights)
 	return resupplier_island, resupplier_resource
 end
 
----@param island ISLAND the island you want to get the resupply weight of
----@return weight[] weights the weights of all of the cargo types for the resupply island
+---@param island ANY_ISLAND the island you want to get the resupply weight of
+---@return ICMResupplyWeights weights the weights of all of the cargo types for the resupply island
 function Cargo.getResupplyWeight(island) -- get the weight of the island (for resupplying the island)
 	-- weight by how much cargo the island has
 	local oil_weight = ((RULES.LOGISTICS.CARGO.ISLANDS.max_capacity - island.cargo.oil) / (RULES.LOGISTICS.CARGO.ISLANDS.max_capacity*0.9)) -- oil
@@ -790,7 +795,7 @@ function Cargo.getResupplyWeight(island) -- get the weight of the island (for re
 	return weight
 end
 
----@param island ISLAND|AI_ISLAND the island you want to get the resupplier weight of
+---@param island ANY_ISLAND the island you want to get the resupplier weight of
 ---@return ICMResupplyWeights weights the weights of all of the cargo types for the resupplier island
 function Cargo.getResupplierWeight(island) -- get weight of the island (for using it to resupply another island)
 	local oil_weight = (island.cargo.oil/(RULES.LOGISTICS.CARGO.ISLANDS.max_capacity*0.9)) -- oil
@@ -827,7 +832,7 @@ function Cargo.newRequestedCargoItem(cargo_type, amount)
 end
 
 
----@param cargo_weight weight[] the weight for the cargo trip
+---@param cargo_weight ICMResupplyWeights the weight for the cargo trip
 ---@param vehicle_object vehicle_object the vehicle data for the first cargo trip
 ---@return requestedCargo requested_cargo the cargo type for each tank set, and the amount for each tank set
 function Cargo.getRequestedCargo(cargo_weight, vehicle_object)
@@ -934,37 +939,45 @@ function Cargo.getBestRoute(origin_island, dest_island) -- origin = resupplier i
 
 	-- checks for all vehicles, and fills in some info to avoid errors if it doesnt exist
 	if not transport_vehicle.heli then
+		---@diagnostic disable-next-line: missing-fields
 		transport_vehicle.heli = {
 			name = "none"
 		}
 	elseif not transport_vehicle.heli.name then
+		---@diagnostic disable-next-line: missing-fields
 		transport_vehicle.heli = {
 			name = "unknown"
 		}
 	end
 	if not transport_vehicle.land then
+		---@diagnostic disable-next-line: missing-fields
 		transport_vehicle.land = {
 			name = "none"
 		}
 	elseif not transport_vehicle.land.name then
+		---@diagnostic disable-next-line: missing-fields
 		transport_vehicle.land = {
 			name = "unknown"
 		}
 	end
 	if not transport_vehicle.plane then
+		---@diagnostic disable-next-line: missing-fields
 		transport_vehicle.plane = {
 			name = "none"
 		}
 	elseif not transport_vehicle.plane.name then
+		---@diagnostic disable-next-line: missing-fields
 		transport_vehicle.plane = {
 			name = "unknown"
 		}
 	end
 	if not transport_vehicle.sea then
+		---@diagnostic disable-next-line: missing-fields
 		transport_vehicle.sea = {
 			name = "none"
 		}
 	elseif not transport_vehicle.sea.name then
+		---@diagnostic disable-next-line: missing-fields
 		transport_vehicle.sea = {
 			name = "unknown"
 		}

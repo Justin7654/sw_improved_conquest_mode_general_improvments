@@ -241,8 +241,8 @@ g_savedata = {
 		individual_data = {},
 		global_data = {}
 	},
-	player_vehicles = {},
-	cargo_vehicles = {},
+	player_vehicles = {}, ---@type table<integer, PLAYER_VEHICLE>
+	cargo_vehicles = {}, ---@type table<integer, CARGO_VEHICLE>
 	constructable_vehicles = {},
 	seat_states = {},
 	vehicle_list = {},
@@ -399,6 +399,9 @@ require("libraries.addon.script.players") -- functions relating to Players
 require("libraries.addon.script.safeServer") -- safer functions for the server functions.
 require("libraries.addon.script.setup") -- functions for script/world setup.
 
+require("libraries.addon.spatial.spatialGrid") -- spatial grid functions
+require("libraries.addon.spatial.spatialGridDefinitions") -- spatial grid definitions
+
 require("libraries.addon.vehicles.ai") -- functions relating to their AI
 require("libraries.addon.vehicles.characters") -- functions for characters, such as setting them into seats.
 
@@ -445,7 +448,7 @@ function setupRules()
 			CONVOY = { --? convoy specific rules
 				min_escorts = 2, -- minimum amount of escorts in a convoy
 				max_escorts = 4, -- maximum amount of escorts in a convoy
-				base_wait_time = time.second * 45, -- the time a vehicle will wait till it just continues anyways
+				base_wait_time = time.minute * 2, -- the time a vehicle will wait till it just continues anyways
 				boat = { --? rules specific for boats
 					min_distance = 50, -- have the one behind stop
 					target_distance = 150, -- + spawning distance of both vehicles
@@ -704,24 +707,28 @@ function setupMain(is_world_create)
 
 			d.print("getting y level of all graph nodes...", true, 0)
 
+			local start_time = s.getTimeMillisec()
 			--[[ 
 				cause createPathY to execute, which will get the y level of all graph nodes
 				otherwise the game would freeze for a bit after the player loaded in, looking like the game froze
 				instead it looks like its taking a bit longer to create the world.
 			]]
 			s.pathfind(m.translation(0, 0, 0), m.translation(0, 0, 0), "", "") 
+			d.print("Graph Node Y level setup took: "..(millisecondsSince(start_time)/1000).."s", true, 0)
 
 			d.print("setting up spawn zones...", true, 0)
 
+			start_time = s.getTimeMillisec()
 			local spawn_zones = sup.spawnZones()
-
+			start_time = s.getTimeMillisec()
 			-- add them to a list indexed by which island the zone belongs to
 			-- local tile_zones = sup.sortSpawnZones(spawn_zones)
 
 			d.print("populating constructable vehicles with spawning modifiers...", true, 0)
-
 			sm.create()
+			d.print("Spawning Modifiers population took: "..(millisecondsSince(start_time)/1000).."s", true, 0)
 
+			start_time = s.getTimeMillisec()
 			local start_island = s.getStartIsland()
 
 			d.print("creating player's main base...", true, 0)
@@ -916,16 +923,14 @@ function setupMain(is_world_create)
 				g_savedata.islands[new_island.index] = new_island
 				d.print("Setup neutral island: "..new_island.index.." \""..island.name.."\"", true, 0)
 
-				-- check for invalid tags
-				if not Tags.has(island.tags, "land_access") and not Tags.has(island.tags, "can_spawn=land") then
-					d.print("WARNING: Island "..island.name.." can spawn land vehicles, but is missing the land_access tag, this may cause issues!", true, 1)
-				end
-
 				-- stop creating new islands if we've reached the island limit
 				if(table.length(g_savedata.islands) >= islands_count) then
 					break
 				end
 			end
+
+			d.print("Island initialization took: "..(millisecondsSince(start_time)/1000).."s", true, 0)
+			start_time = s.getTimeMillisec()
 
 			-- link the zones to the island which is closest to the zone
 
@@ -993,6 +998,10 @@ function setupMain(is_world_create)
 					::setupMain_setupIslands_setupZones_continue_zone::
 				end
 			end
+
+			d.print("Spawn zone linking took: "..(millisecondsSince(start_time)/1000).."s", true, 0)
+			start_time = s.getTimeMillisec()
+
 			d.print("setting up additional data...")
 
 			-- sets up their positions for sweep and prune
@@ -1033,14 +1042,15 @@ function setupMain(is_world_create)
 				}
 			end
 
+			d.print("Additional data setup took: "..(millisecondsSince(start_time)/1000).."s", true, 0)
 			d.print("completed setting up world!", true, 0)
 
 			d.print("spawning initial ai vehicles...", true, 0)
-				
+			start_time = s.getTimeMillisec()
 			for i = 1, g_savedata.settings.AI_INITIAL_SPAWN_COUNT * math.ceil(math.clamp(g_savedata.settings.AI_INITIAL_ISLAND_AMOUNT, 1, #g_savedata.islands - 1)/2) do
 				v.spawnRetry(nil, nil, true, nil, nil, 5) -- spawn initial ai
 			end
-			d.print("all initial ai vehicles spawned!")
+			d.print("all initial ai vehicles spawned! Took "..(millisecondsSince(start_time)/1000).."s", true, 0)
 		else
 			for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
 				for _, vehicle_object in pairs(squad.vehicles) do
@@ -1255,27 +1265,26 @@ function onVehicleDamaged(vehicle_id, amount, x, y, z, body_id)
 		if amount > 0 then -- checks if it was actual damage and not from the player repairing their vehicle
 			-- attempts to estimate which vehicles did the damage, as to not favour the vehicles that are closest
 			-- give it to all vehicles within 3000m of the player, and that are targeting the player's vehicle
+			-- (?) Doesn't do anything if the player is nearby since target_vehicle_id will be nil. Is this intended?
 			local valid_ai_vehicles = {}
-			for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
-				if squad.command == SQUAD.COMMAND.ENGAGE or squad.command == SQUAD.COMMAND.CARGO then
-					for group_id, vehicle_object in pairs(squad.vehicles) do
-						if vehicle_object.target_vehicle_id == vehicle_id then -- if the ai vehicle is targeting the vehicle which was damaged
-							if m.xzDistance(player_vehicle.transform, vehicle_object.transform) <= 2500 and vehicle_object.state.is_simulating then -- if the ai vehicle is 2500m or less away from the player, and is 
-								valid_ai_vehicles[group_id] = vehicle_object
-							end
-						end
-					end
+			local nearby_ai_vehicles = SpatialGrid.query(ai_vehicles_grid, player_vehicle.transform[13], player_vehicle.transform[15], 2500)
+			for _, ai_group_id in pairs(nearby_ai_vehicles) do
+				local vehicle_object, _, _ = Squad.getVehicle(ai_group_id)
+				if vehicle_object and vehicle_object.target_vehicle_id == vehicle_id and vehicle_object.state.is_simulating then
+					valid_ai_vehicles[ai_group_id] = vehicle_object
 				end
 			end
+
 			-- <valid ai> = all the enemy ai vehicles within 3000m of the player, and that are targeting the player
 			-- <ai amount> = number of <valid ai>
 			--
 			-- for all the <valid ai>, add the damage dealt to the player / <ai_amount> to their damage dealt property
 			-- this is used to tell if that vehicle, the type of vehicle, its strategy and its role was effective
+			local valid_ai_amount = table.length(valid_ai_vehicles)
 			for _, vehicle_object in pairs(valid_ai_vehicles) do
 				-- ensure that the damage dealt field for this group_id is filled.
 				vehicle_object.damage_dealt[group_id] = vehicle_object.damage_dealt[group_id] or 0
-				vehicle_object.damage_dealt[group_id] = vehicle_object.damage_dealt[group_id] + amount/table.length(valid_ai_vehicles)
+				vehicle_object.damage_dealt[group_id] = vehicle_object.damage_dealt[group_id] + amount/valid_ai_amount
 			end
 		end
 
@@ -1368,12 +1377,16 @@ function onVehicleSpawn(vehicle_id, peer_id, x, y, z, cost)
 		d.print("Player Spawned Vehicle "..vehicle_id, true, 0)
 
 		-- player spawned vehicle
+		---@cast vehicle_id number
+		---@class PLAYER_VEHICLE
 		g_savedata.player_vehicles[vehicle_id] = {
 			current_damage = 0,
 			damage_threshold = 100,
 			death_pos = nil,
 			ui_id = server.getMapID() --[[@as SWUI_ID]],
-			mass = nil
+			mass = nil, ---@type number?
+			voxels = nil, ---@type number?
+			transform = nil, ---@type SWMatrix?
 		}
 
 		return
@@ -1384,6 +1397,7 @@ function onVehicleDespawn(vehicle_id, peer_id)
 	if is_dlc_weapons then
 		if g_savedata.player_vehicles[vehicle_id] ~= nil then
 			g_savedata.player_vehicles[vehicle_id] = nil
+			SpatialGrid.remove(player_vehicles_grid, vehicle_id)
 
 			-- make sure to clear this vehicle from all AI
 			for _, squad in pairs(g_savedata.ai_army.squadrons) do
@@ -1437,8 +1451,9 @@ function onVehicleDespawn(vehicle_id, peer_id)
 	end
 end
 
+--- @param squad_index integer
+--- @param group_id integer
 function cleanVehicle(squad_index, group_id)
-
 	-- get the squadron
 	local squadron = Squad.getSquadFromIndex(squad_index)
 
@@ -1453,7 +1468,6 @@ function cleanVehicle(squad_index, group_id)
 
 	if not vehicle_object then
 		d.print(("(cleanVehicle) vehicle_object %s doesn't exist! Was trying to clean vehicle from squadron %s"):format(group_id, squad_index), true, 1)
-
 		return
 	end
 
@@ -1492,6 +1506,9 @@ function cleanVehicle(squad_index, group_id)
 		end
 	end
 
+	-- Remove it from the spatial grid
+	SpatialGrid.remove(ai_vehicles_grid, group_id)
+
 	-- Despawn all survivors
 	for _, object_id in pairs(vehicle_object.survivors) do
 		s.despawnObject(object_id, true)
@@ -1502,23 +1519,8 @@ function cleanVehicle(squad_index, group_id)
 		s.despawnObject(vehicle_object.fire_id, true)
 	end
 
-	-- TODO: Potentially can be replaced by Squad.removeVehicle
-	g_savedata.ai_army.squadrons[squad_index].vehicles[group_id] = nil
-	g_savedata.ai_army.squad_vehicles[group_id] = nil -- reset squad vehicle list
-
-	if squad_index ~= RESUPPLY_SQUAD_INDEX then
-		if table.length(g_savedata.ai_army.squadrons[squad_index].vehicles) <= 0 then -- squad has no more vehicles
-			g_savedata.ai_army.squadrons[squad_index] = nil
-
-			-- If theres no more vehicles, then there should be no island assigned to this squad??
-			for island_index, island in pairs(g_savedata.islands) do
-				if island.assigned_squad_index == squad_index then
-					d.print("This actually gets called", true, 0)
-					island.assigned_squad_index = -1
-				end
-			end
-		end
-	end
+	-- Remove the vehicle from its current squad
+	Squad.removeVehicle(squadron, vehicle_object)
 end
 
 function onVehicleUnload(vehicle_id)
@@ -1690,6 +1692,7 @@ function onVehicleLoad(vehicle_id)
 		local player_vehicle_data = s.getVehicleComponents(vehicle_id)
 		if player_vehicle_data.voxels then
 			g_savedata.player_vehicles[vehicle_id].mass = player_vehicle_data.mass
+			g_savedata.player_vehicles[vehicle_id].voxels = player_vehicle_data.voxels
 			g_savedata.player_vehicles[vehicle_id].damage_threshold = player_vehicle_data.voxels / 4
 			g_savedata.player_vehicles[vehicle_id].transform = s.getVehiclePos(vehicle_id)
 		end
@@ -1753,22 +1756,23 @@ function onVehicleLoad(vehicle_id)
 		local main_vehicle_id = VehicleGroup.getMainVehicle(group_id)
 
 		-- check to make sure no vehicles are too close, as this could result in them spawning inside each other
-		for _, checking_squad in pairs(g_savedata.ai_army.squadrons) do
-			for _, checking_vehicle_object in pairs(checking_squad.vehicles) do
-				if checking_vehicle_object.group_id ~= group_id then
-					if m.distance(vehicle_object.transform, checking_vehicle_object.transform) < (vehicle_object.spawning_transform.distance or DEFAULT_SPAWNING_DISTANCE) + checking_vehicle_object.spawning_transform.distance then
-						if not vehicle_object.path[2] then
-							d.print("(onVehicleLoad) cancelling spawning vehicle, due to its proximity to vehicle "..group_id, true, 1)
+		local vehicles_spawning_distance = vehicle_object.spawning_transform.distance or DEFAULT_SPAWNING_DISTANCE
+		local nearby_ai_vehicles = SpatialGrid.query(ai_vehicles_grid, vehicle_object.transform[13], vehicle_object.transform[15], math.max(vehicles_spawning_distance, 200)) --Use a large query radius because we dont know what the other vehicles spawning_distance is
+		for _, checking_group_id in pairs(nearby_ai_vehicles) do
+			if checking_group_id ~= group_id then
+				checking_vehicle_object, _, _ = Squad.getVehicle(checking_group_id)
+				if checking_vehicle_object and m.distance(vehicle_object.transform, checking_vehicle_object.transform) < vehicles_spawning_distance + checking_vehicle_object.spawning_transform.distance then
+					if not vehicle_object.path[2] then
+						d.print("(onVehicleLoad) cancelling spawning vehicle, due to its proximity to vehicle "..group_id, true, 1)
 
-							-- refund the cargo to the island which was sending the cargo
-							Cargo.refund(group_id)
+						-- refund the cargo to the island which was sending the cargo
+						Cargo.refund(group_id)
 
-							v.kill(vehicle_object, true, true)
-							return
-						else
-							v.teleport(vehicle_object.group_id, m.translation(vehicle_object.path[2].x, vehicle_object.path[2].y, vehicle_object.path[2].z))
-							break
-						end
+						v.kill(vehicle_object, true, true)
+						return
+					else
+						v.teleport(vehicle_object.group_id, m.translation(vehicle_object.path[2].x, vehicle_object.path[2].y, vehicle_object.path[2].z))
+						break
 					end
 				end
 			end
@@ -2876,7 +2880,8 @@ function tickSquadrons(game_ticks)
 
 			--* tick behaviour and exit conditions
 			if squad.command == SQUAD.COMMAND.CARGO and g_savedata.settings.CARGO_MODE then
-				local convoy = {}
+				---@type CARGO_VEHICLE
+				local convoy = nil
 				for vehicle_index, vehicle_object in pairs(squad.vehicles) do
 					if g_savedata.cargo_vehicles[vehicle_object.group_id] then
 						local n_vehicle_object, n_squad_index, n_squad = Squad.getVehicle(vehicle_object.group_id)
@@ -3628,6 +3633,94 @@ function tickVision(game_ticks)
 	end
 
 	-- analyse player vehicles
+	for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
+		if squad_index ~= RESUPPLY_SQUAD_INDEX then
+			if isTickID(squad_index, 10) or table.length(squad.target_vehicles) > 0 then
+				-- Reset all target visiblity state to investigate, if it is still visible then it will be set again below
+				for player_vehicle_id, _ in pairs(squad.target_vehicles) do
+					local player_vehicle = g_savedata.player_vehicles[player_vehicle_id]
+					if player_vehicle.death_pos == nil then
+						squad.target_vehicles[player_vehicle_id].state = TARGET_VISIBILITY_INVESTIGATE
+					else
+						squad.target_vehicles[player_vehicle_id] = nil
+					end
+				end
+
+				-- For each squad vehicle, look for targets in range
+				for group_id, vehicle_object in pairs(squad.vehicles) do
+					local vehicle_transform = vehicle_object.transform
+					local local_vision_radius = vehicle_object.vision.radius
+					local has_sonar = vehicle_object.vision.is_sonar
+					if vehicle_transform == nil then
+						goto continue_vision_squad_vehicle
+					end
+					
+					-- Spatial query for player vehicles which are within vision range
+					local nearby_player_vehicles = SpatialGrid.query(
+						player_vehicles_grid, 
+						vehicle_transform[13], 
+						vehicle_transform[15], 
+						local_vision_radius
+					)
+					-- Loop over every nearby player vehicle found
+					for _, player_vehicle_id in pairs(nearby_player_vehicles) do
+						local player_vehicle = g_savedata.player_vehicles[player_vehicle_id]
+						if not player_vehicle then goto continue_vision_player_vehicle end
+
+						local player_vehicle_transform = player_vehicle.transform
+						local current_vision_radius = local_vision_radius
+
+						if player_vehicle_transform == nil then
+							goto continue_vision_player_vehicle
+						end
+
+						-- Check if the player vehicle is dead
+						if player_vehicle.death_pos ~= nil then
+							-- Check if it can be brought back to life (has moved far enough from death position)
+							if m.distance(player_vehicle.death_pos, player_vehicle.transform) > 500 then
+								-- Can be brought back to life!
+								player_vehicle.death_pos = nil
+								if player_vehicle.voxels then
+									player_vehicle.damage_threshold = player_vehicle.damage_threshold + player_vehicle.voxels / 10
+								else
+									--If for some reason the voxel data isn't set, still increase the threshold a bit so it doesn't immediately die again
+									player_vehicle.damage_threshold = player_vehicle.damage_threshold * 1.3
+								end
+							else
+								goto continue_vision_player_vehicle
+							end
+						end
+
+						-- Adjust vision radius for conditions specific to the player vehicle
+						if not has_sonar and player_vehicle_transform[14] < -1 then
+							-- Reduce the player's sight level depending on the player's depth
+							current_vision_radius = current_vision_radius * math.min(0.15 / (math.abs(player_vehicle_transform[14]) * 0.2), 0.15)
+						end
+
+						-- Check if the player vehicle is still within range after the vision radius adjustments
+						local distance = m.distance(player_vehicle_transform, vehicle_transform)
+						if distance < current_vision_radius then
+							if squad.target_vehicles[player_vehicle_id] == nil then
+								---@class TargetVehicle
+								squad.target_vehicles[player_vehicle_id] = {
+									state = TARGET_VISIBILITY_VISIBLE,
+									last_known_pos = player_vehicle_transform
+								}
+							else
+								local target_vehicle = squad.target_vehicles[player_vehicle_id]
+								target_vehicle.state = TARGET_VISIBILITY_VISIBLE
+								target_vehicle.last_known_pos = player_vehicle_transform
+							end
+						end
+						::continue_vision_player_vehicle::
+					end
+					::continue_vision_squad_vehicle::
+				end
+			end
+		end
+	end
+
+	--[[
 	for player_vehicle_id, player_vehicle in pairs(g_savedata.player_vehicles) do
 		local player_vehicle_transform = player_vehicle.transform
 
@@ -3691,7 +3784,7 @@ function tickVision(game_ticks)
 				end
 			end
 		end
-	end
+	end--]]
 
 	-- analyse players
 	for _, player in ipairs(s.getPlayers()) do
@@ -3701,32 +3794,34 @@ function tickVision(game_ticks)
 			
 			for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
 				if squad_index ~= RESUPPLY_SQUAD_INDEX then
-					-- reset target visibility state to investigate
+					if isTickID(squad_index, 10) or (squad.target_players[player_steam_id] ~= nil) then
+						-- reset target visibility state to investigate
 
-					if squad.target_players[player_steam_id] ~= nil then
-						squad.target_players[player_steam_id].state = TARGET_VISIBILITY_INVESTIGATE
-					end
+						if squad.target_players[player_steam_id] ~= nil then
+							squad.target_players[player_steam_id].state = TARGET_VISIBILITY_INVESTIGATE
+						end
 
-					-- check if target is visible to any vehicles
+						-- check if target is visible to any vehicles
 
-					for vehicle_id, vehicle_object in pairs(squad.vehicles) do
-						local distance = m.distance(player_transform, vehicle_object.transform)
+						for vehicle_id, vehicle_object in pairs(squad.vehicles) do
+							local distance = m.distance(player_transform, vehicle_object.transform)
 
-						if distance <= vehicle_object.vision.radius then
-							g_savedata.ai_knowledge.last_seen_positions[player_steam_id] = player_transform
-							if squad.target_players[player_steam_id] == nil then
-								---@class TargetPlayer
-								squad.target_players[player_steam_id] = {
-									state = TARGET_VISIBILITY_VISIBLE,
-									last_known_pos = player_transform,
-								}
-							else
-								local target_player = squad.target_players[player_steam_id]
-								target_player.state = TARGET_VISIBILITY_VISIBLE
-								target_player.last_known_pos = player_transform
+							if distance <= vehicle_object.vision.radius then
+								g_savedata.ai_knowledge.last_seen_positions[player_steam_id] = player_transform
+								if squad.target_players[player_steam_id] == nil then
+									---@class TargetPlayer
+									squad.target_players[player_steam_id] = {
+										state = TARGET_VISIBILITY_VISIBLE,
+										last_known_pos = player_transform,
+									}
+								else
+									local target_player = squad.target_players[player_steam_id]
+									target_player.state = TARGET_VISIBILITY_VISIBLE
+									target_player.last_known_pos = player_transform
+								end
+								
+								break
 							end
-							
-							break
 						end
 					end
 				end
@@ -3929,6 +4024,7 @@ function tickVehicles(game_ticks)
 					vehicle_object.sinking_counter = 0
 				end
 
+				-- Handles AI pathing
 				local ai_target = nil
 				if ai_state ~= 2 then ai_state = 1 end
 				local ai_speed_pseudo = (vehicle_object.speed.speed or VEHICLE.SPEED.BOAT) * vehicle_update_tickrate / 60
@@ -3940,8 +4036,8 @@ function tickVehicles(game_ticks)
 						ai_speed_pseudo = v.getTargetSpeed(vehicle_object)
 
 						if #vehicle_object.path == 0 then
+							-- Set to holding if we have no waypoints
 							AI.setState(vehicle_object, VEHICLE.STATE.HOLDING)
-							d.print("Set vehicle "..vehicle_object.group_id.." to holding as it has no path waypoints", true, 0)
 						else
 							if ai_state ~= 2 then ai_state = 1 end
 
@@ -3970,18 +4066,14 @@ function tickVehicles(game_ticks)
 									end
 								elseif vehicle_object.vehicle_type ~= VEHICLE.TYPE.LAND then
 									-- if we have reached last waypoint start holding there
-									--d.print("set plane "..vehicle_id.." to holding", true, 0)
 									AI.setState(vehicle_object, VEHICLE.STATE.HOLDING)
-									--d.print("Set vehicle "..vehicle_object.group_id.." to holding as it reached last waypoint", true, 0)
 								end
 							elseif vehicle_object.vehicle_type == VEHICLE.TYPE.BOAT and distance < WAYPOINT_CONSUME_DISTANCE then
 								if #vehicle_object.path > 0 then
 									p.nextPath(vehicle_object)
 								else
 									-- if we have reached last waypoint start holding there
-									--d.print("set boat "..vehicle_id.." to holding", true, 0)
 									AI.setState(vehicle_object, VEHICLE.STATE.HOLDING)
-									d.print("Set vehicle "..vehicle_object.group_id.." to holding as it reached last waypoint", true, 0)
 								end
 							end
 
@@ -4158,15 +4250,7 @@ function tickVehicles(game_ticks)
 								end
 
 								if server.getVehicleLocal(main_vehicle_id) == false then
-									-- try with main_vehicle_id
-									--local set_pos = server.setGroupPos(main_vehicle_id, new_pos)
-
-									-- if it failed
-									--if not set_pos then
-										--d.print(("Failed to set pseudo group pos via main_vehicle_id for vehicle with group_id: %s"):format(group_id), true, 1)
-									--end
-
-									-- try with group_id
+									-- moves the AI when its in pseudo mode
 									local set_pos = server.moveGroup(group_id, new_pos)
 
 									-- if it failed
@@ -4210,6 +4294,12 @@ function tickVehicles(game_ticks)
 					debug_data = debug_data.."Squad: "..squad_index .."\n"
 					debug_data = debug_data.."Command: "..squad.command .."\n"
 					debug_data = debug_data.."AI State: "..ai_state .. "\n"
+
+					-- killed data
+					if vehicle_object.is_killed then
+						debug_data = debug_data.."Killed\n"
+						debug_data = debug_data.."Death Timer: "..tostring(vehicle_object.death_timer or nil)
+					end
 
 					-- cargo data
 					if vehicle_object.role == SQUAD.COMMAND.CARGO then
@@ -4471,7 +4561,7 @@ function tickUpdateVehicleData(game_ticks)
 end
 
 function tickModifiers(game_ticks)
-	--d.startProfiler("tickModifiers()", true)
+	d.startProfiler("tickModifiers()", true)
 
 	if isTickID(0, time.hour / 2) then -- defence, if the player has attacked within the last 30 minutes, increase defence
 		if g_savedata.game_tick_counter - g_savedata.ai_history.has_defended <= time.hour / 2 and g_savedata.ai_history.has_defended ~= 0 then -- if the last time the player attacked was equal or less than 30 minutes ago
@@ -4520,11 +4610,11 @@ function tickModifiers(game_ticks)
 			end
 		end
 	end
-	--d.stopProfiler("tickModifiers()", true, "onTick()")
+	d.stopProfiler("tickModifiers()", true, "onTick()")
 end
 
 function tickVehicleCleaner()
-	d.startProfiler("tickVehicleCleaner()", true)
+	--d.startProfiler("tickVehicleCleaner()", true)
 
 	---@param vehicle_object vehicle_object
 	---@param squad_index integer
@@ -4590,7 +4680,7 @@ function tickVehicleCleaner()
 			::continue::
 		end
 	end
-	d.stopProfiler("tickVehicleCleaner()", true, "onTick()")
+	--d.stopProfiler("tickVehicleCleaner()", true, "onTick()")
 end
 
 --[[ no longer has a use, replaced by automatic migration in 0.3.0.78
@@ -4662,7 +4752,7 @@ function tickCargo(game_ticks)
 						end
 						d.print("spawning cargo vehicle...", true, 0)
 						local was_spawned, vehicle_data = v.spawnRetry(sm.getVehicleListID(best_route[1].transport_method.name), nil, true, resupplier_island, 1, 20)
-						if not was_spawned then
+						if not was_spawned or vehicle_data == nil then
 							d.print("Was unable to spawn cargo vehicle! Error: "..tostring(vehicle_data), true, 1)
 						else
 							-- add it to the cargo vehicles list
@@ -4791,19 +4881,9 @@ function tickCargoVehicles(game_ticks)
 
 				local vehicle_object, squad_index, squad = Squad.getVehicle(cargo_vehicle.vehicle_data.group_id)
 
-				-- temporary backwards compatibility for testing version
-				if not cargo_vehicle.search_area then
-					cargo_vehicle.search_area = {
-						ui_id = s.getMapID(),
-						x = nil,
-						z = nil
-					}
-				end
-
 				--* draw a search radius around the cargo vehicle
 
 				local search_radius = 1850
-
 				if not cargo_vehicle.search_area.x or m.xzDistance(vehicle_object.transform, m.translation(cargo_vehicle.search_area.x, 0, cargo_vehicle.search_area.z)) >= search_radius then
 					--* remove previous search area
 					s.removeMapID(-1, cargo_vehicle.search_area.ui_id)
@@ -4825,7 +4905,7 @@ function tickCargoVehicles(game_ticks)
 				--? if the cargo vehicle is simulating and its in the pathing stage
 				if cargo_vehicle.vehicle_data.state.is_simulating and cargo_vehicle.route_status == 1 then
 					local cargo_data, got_data = Cargo.getTank(cargo_vehicle.vehicle_data.group_id)
-					if got_data then
+					if got_data and cargo_data then
 						cargo_vehicle.requested_cargo = cargo_data
 
 						for cargo_type, _ in pairs(cargo_vehicle.vehicle_data.cargo.current) do
@@ -4849,6 +4929,7 @@ function tickCargoVehicles(game_ticks)
 						-- start going on its route
 						local island, found_island = Island.getDataFromIndex(cargo_vehicle.route_data[1].island_index)
 						if found_island then
+							d.print("(tickCargoVehicles) heading to island: "..island.name..". Route status 0->1", true, 0)
 							cargo_vehicle.route_status = 1
 							local squad_index, squad = Squad.getSquadFromGroup(cargo_vehicle.vehicle_data.group_id)
 							squad.target_island = island
@@ -4876,6 +4957,7 @@ function tickCargoVehicles(game_ticks)
 					}
 
 					if #cargo_vehicle.vehicle_data.path <= 1 or m.xzDistance(island.transform, cargo_vehicle.vehicle_data.transform) < distance_thresholds[(cargo_vehicle.vehicle_data.vehicle_type)] then
+						d.print("(tickCargoVehicles) arrived at island: "..island.name..". Route status 1->2 (transferring)", true, 0)
 						cargo_vehicle.route_status = 2 -- make it unload the cargo
 						table.remove(cargo_vehicle.route_data, 1)
 						d.print("transferring cargo", true, 0)
@@ -4900,6 +4982,7 @@ function tickCargoVehicles(game_ticks)
 							if not was_spawned or not vehicle_data then
 								d.print("Was unable to spawn cargo vehicle! Error: "..tostring(vehicle_data), true, 1)
 							else
+								d.print("spawned new cargo vehicle for transfer: "..vehicle_data.name, true, 0)
 								-- add it to the cargo vehicles list
 
 								---@class CARGO_VEHICLE
@@ -4952,14 +5035,14 @@ function tickCargoVehicles(game_ticks)
 							if transfer_complete and not cargo_vehicle.vehicle_data.is_killed then
 								d.print("transfer completed? "..tostring(transfer_complete).."\nreason: "..transfer_complete_reason, true, 0)
 								-- kill old cargo vehicle
-								v.kill(cargo_vehicle.vehicle_data, true) -- kills the vehicle thats now empty
+								v.kill(cargo_vehicle.vehicle_data, true, true) -- kills the vehicle thats now empty
 
 								-- tell new cargo vehicle to go on its route
 
 								local island, found_island = Island.getDataFromIndex(new_cargo_vehicle.route_data[1].island_index)
 								if found_island then
 									new_cargo_vehicle.route_status = 1
-									local _, squad = Squad.getSquadFromGroup(cargo_vehicle.vehicle_data.group_id)
+									local _, squad = Squad.getSquadFromGroup(new_cargo_vehicle.vehicle_data.group_id)
 									squad.target_island = island
 									p.addPath(new_cargo_vehicle.vehicle_data, island.transform)
 									new_cargo_vehicle.path_data.path = new_cargo_vehicle.vehicle_data.path
@@ -4974,8 +5057,17 @@ function tickCargoVehicles(game_ticks)
 						
 						if transfer_complete and not cargo_vehicle.vehicle_data.is_killed then
 							d.print("transfer completed? "..tostring(transfer_complete).."\nreason: "..transfer_complete_reason, true, 0)
-							v.kill(cargo_vehicle.vehicle_data, true) -- kills the vehicle thats now empty
+							d.print("cargo vehicle has completed its route and delivered its cargo to "..cargo_vehicle.resupply_island.name..", removing vehicle.", true, 0)
+							v.kill(cargo_vehicle.vehicle_data, true, true) -- kills the vehicle thats now empty
 						end
+					end
+				elseif cargo_vehicle.route_status == 3 then
+					-- Do nothing, waiting for transfer from another cargo vehicle
+
+					-- Check if its the only cargo vehicle, if it is then something has gone wrong and it will sit here forever
+					if table.length(g_savedata.cargo_vehicles) == 1 then
+						d.print("(tickCargoVehicles) cargo vehicle "..tostring(vehicle_object.group_id).." is in route status 3 but is the only cargo vehicle? Removing to prevent deadlock.", true, 1)
+						v.kill(cargo_vehicle.vehicle_data, true, true)
 					end
 				end
 			end
@@ -5363,6 +5455,28 @@ function tickSanity(game_ticks)
 
 end
 
+function tickSpatialGrid(game_ticks)
+	d.startProfiler("tickSpatial()", true)
+
+	-- Update AI vehicle positions
+	for squad_index, squad in pairs(g_savedata.ai_army.squadrons) do
+		if isTickID(squad_index, 10) then
+			for _, vehicle_object in pairs(squad.vehicles) do
+				SpatialGrid.update(ai_vehicles_grid,vehicle_object.group_id, vehicle_object.transform[13], vehicle_object.transform[15])
+			end
+		end
+	end
+	
+	-- Update player vehicle positions
+	for player_vehicle_id, player_vehicle in pairs(g_savedata.player_vehicles) do
+		if isTickID(player_vehicle_id, 30) then -- Matches the transform update rate in tickUpdateVehicleData. Dont change
+			SpatialGrid.update(player_vehicles_grid, player_vehicle_id, player_vehicle.transform[13], player_vehicle.transform[15])
+		end
+	end
+
+	d.stopProfiler("tickSpatial()", true, "onTick()")
+end
+
 function onTick(game_ticks)
 
 	game_ticks = game_ticks or 1
@@ -5406,6 +5520,7 @@ function onTick(game_ticks)
 	tickVehicleCleaner()
 
 	tickUpdateVehicleData(game_ticks)
+	tickSpatialGrid(game_ticks)
 	tickVision(game_ticks)
 	tickGamemode(game_ticks)
 	tickAI(game_ticks)

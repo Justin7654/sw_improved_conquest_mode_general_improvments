@@ -71,11 +71,11 @@ end
 ---@return boolean exists if the data exists at the location
 function Cache.exists(location)
 	if g_savedata.cache[location] and g_savedata.cache[location] ~= {} and (type(g_savedata.cache[location]) ~= "table" or table.length(g_savedata.cache[location]) > 0) or g_savedata.cache[location] == false then
-		d.print("g_savedata.Cache."..location.." exists", true, 0)
+		--d.print("g_savedata.Cache."..location.." exists", true, 0)
 
 		return true
 	end
-	d.print("g_savedata.Cache."..location.." doesn't exist", true, 0)
+	--d.print("g_savedata.Cache."..location.." doesn't exist", true, 0)
 	return false
 end
 

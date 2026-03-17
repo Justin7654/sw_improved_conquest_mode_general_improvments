@@ -1,5 +1,6 @@
 ---@diagnostic disable: inject-field
 -- required libraries
+require("libraries.addon.commands.command.command")
 require("libraries.addon.components.spawningUtils")
 require("libraries.addon.components.tags")
 require("libraries.addon.script.debugging")
@@ -12,6 +13,7 @@ require("libraries.icm.spawnModifiers")
 require("libraries.icm.cargo")
 require("libraries.icm.objective")
 require("libraries.utils.string")
+
 
 -- library name
 Vehicle = {}
@@ -1118,3 +1120,49 @@ function Vehicle.kill(vehicle_object, kill_instantly, force_kill)
 
 	return true
 end
+
+Command.registerCommand(
+	"killvehicle",
+	---@param full_message string the full message
+	---@param peer_id integer the peer_id of the sender
+	---@param arg string[] the arguments of the command.
+	function(full_message, peer_id, arg)
+		group_id = tonumber(arg[1])
+		if group_id == nil then
+			d.print("(Command.killvehicle) invalid vehicle id given: "..tostring(arg[1]), false, 0, peer_id)
+			return
+		end
+		targetVehicle = Squad.getVehicle(group_id)
+		if targetVehicle == nil then
+			d.print("(Command.killvehicle) failed to get vehicle with id: "..tostring(arg[1]), false, 0, peer_id)
+			return
+		end
+		-- Optional arguments
+		local kill_instantly = false
+		if arg[2] ~= nil then
+			local lowered_arg = string.lower(arg[2])
+			kill_instantly = lowered_arg == "true"
+			if lowered_arg ~= "true" and lowered_arg ~= "false" then
+				d.print("(Command.killvehicle) Invalid kill_instantly argument: "..tostring(arg[2])..". Valid values are \"true\" or \"false\".", false, 0, peer_id)
+				return
+			end
+		end
+		local force_kill = false
+		if arg[3] ~= nil then
+			local lowered_arg = string.lower(arg[3])
+			force_kill = lowered_arg == "true"
+			if lowered_arg ~= "true" and lowered_arg ~= "false" then
+				d.print("(Command.killvehicle) Invalid force_kill argument: "..tostring(arg[3])..". Valid values are \"true\" or \"false\".", false, 0, peer_id)
+				return
+			end
+		end
+
+
+		Vehicle.kill(targetVehicle, kill_instantly, force_kill)
+	end,
+	"admin",
+	"Marks a AI vehicle as killed, eventually despawning it. Used primarly for debugging, you may want to use despawnvehicle insteaed.",
+	"Marks a AI vehicle as killed, Use 'true' to enable the second and third argument",
+	{""},
+	"(group_id) kill_instantly? force_kill?"
+)

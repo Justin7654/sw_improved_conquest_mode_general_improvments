@@ -94,8 +94,9 @@ function Pathfinding.nextPath(vehicle_object)
 	end
 
 	if vehicle_object.path[1] then
+		s.removeMapID(-1, vehicle_object.path[1].ui_id) --Delete the next paths debug label since it wont be able to be deleted after this
 		if vehicle_object.path[0] then
-			s.removeMapID(-1, vehicle_object.path[0].ui_id)
+			--s.removeMapID(-1, vehicle_object.path[0].ui_id)
 		end
 		vehicle_object.path[0] = {
 			x = vehicle_object.path[1].x,

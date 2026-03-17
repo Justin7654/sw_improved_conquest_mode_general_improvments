@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <playlist folder_path="data/missions/ICM_Modified" file_store="4" name="Improved Conquest Mode Modified (0.4.0.27)">
-	<locations location_id_counter="477" component_id_counter="10360">
+	<locations location_id_counter="477" component_id_counter="10371">
 		<locations>
 			<l id="75" name="Flag" env_mod_spawn_num="1">
 				<components>
@@ -40972,7 +40972,7 @@
 						<graph_links/>
 					</c>
 					<c component_type="11" id="4666" name="land_path,precision=0" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
-						<spawn_transform 30="-144.156845" 31="15.988465" 32="466.396362"/>
+						<spawn_transform 30="-143.127228" 31="15.988465" 32="466.396362"/>
 						<spawn_bounds>
 							<min x="-10" y="-10" z="-10"/>
 							<max x="10" y="10" z="10"/>
@@ -40982,7 +40982,7 @@
 						</graph_links>
 					</c>
 					<c component_type="11" id="4667" name="land_path,precision=0" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
-						<spawn_transform 30="-154.695877" 31="16.360788" 32="391.870544"/>
+						<spawn_transform 30="-153.777832" 31="16.360788" 32="391.870544"/>
 						<spawn_bounds>
 							<min x="-10" y="-10" z="-10"/>
 							<max x="10" y="10" z="10"/>
@@ -40992,7 +40992,7 @@
 						</graph_links>
 					</c>
 					<c component_type="11" id="4668" name="land_path,precision=0" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
-						<spawn_transform 30="-158.990479" 31="16.446978" 32="346.937317"/>
+						<spawn_transform 30="-158.511581" 31="16.446978" 32="351.769867"/>
 						<spawn_bounds>
 							<min x="-10" y="-10" z="-10"/>
 							<max x="10" y="10" z="10"/>
@@ -41242,7 +41242,7 @@
 						</graph_links>
 					</c>
 					<c component_type="11" id="4694" name="land_path,precision=0" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
-						<spawn_transform 30="459.625763" 31="16.33411" 32="12.329981"/>
+						<spawn_transform 30="459.625763" 31="16.33411" 32="13.469069"/>
 						<spawn_bounds>
 							<min x="-10" y="-10" z="-10"/>
 							<max x="10" y="10" z="10"/>
@@ -41361,7 +41361,7 @@
 							<l value="4704"/>
 						</graph_links>
 					</c>
-					<c component_type="10" id="10001" cargo_zone_import_cargo_type="capture,land_access=meier,can_spawn=land,oil_production=1000" display_name="Checkpoint Tom" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+					<c component_type="10" id="10001" cargo_zone_import_cargo_type="capture,can_spawn=land,land_access=meier,oil_production=1000" display_name="Checkpoint Tom" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
 						<spawn_transform 00="0.037492" 01="0.025518" 02="0.998971" 10="0.051047" 11="0.99832" 12="-0.027417" 20="-0.997992" 21="0.052022" 22="0.036127" 30="331.282959" 31="34.007965" 32="-158.813126"/>
 						<spawn_bounds>
 							<min x="-5" y="-5" z="-5"/>
@@ -41369,7 +41369,7 @@
 						</spawn_bounds>
 						<graph_links/>
 					</c>
-					<c component_type="10" id="10002" cargo_zone_import_cargo_type="turret,turret_type=SAM" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+					<c component_type="10" id="10002" cargo_zone_import_cargo_type="turret,turret_type=SAM,owner=Checkpoint Tom" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
 						<spawn_transform 11="0.999595" 12="0.028455" 21="-0.028455" 22="0.999595" 30="330.361725" 31="54.594761" 32="-212.234268"/>
 						<spawn_bounds>
 							<min x="-5" y="-5" z="-5"/>
@@ -41377,7 +41377,7 @@
 						</spawn_bounds>
 						<graph_links/>
 					</c>
-					<c component_type="10" id="10003" cargo_zone_import_cargo_type="turret,turret_type=bunker" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+					<c component_type="10" id="10003" cargo_zone_import_cargo_type="turret,turret_type=bunker,owner=Checkpoint Tom" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
 						<spawn_transform 00="-0.843196" 02="0.537607" 20="-0.537607" 22="-0.843196" 30="31.059052" 31="16.051641" 32="-108.227051"/>
 						<spawn_bounds>
 							<min x="-5" y="-5" z="-5"/>
@@ -41385,7 +41385,7 @@
 						</spawn_bounds>
 						<graph_links/>
 					</c>
-					<c component_type="10" id="10004" cargo_zone_import_cargo_type="turret,turret_type=bunker" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+					<c component_type="10" id="10004" cargo_zone_import_cargo_type="turret,turret_type=bunker,owner=Checkpoint Tom" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
 						<spawn_transform 00="-0.724419" 02="-0.689359" 10="0.015233" 11="0.999756" 12="-0.016008" 20="0.689191" 21="-0.022098" 22="-0.724243" 30="-39.77037" 31="16.835377" 32="-378.902283"/>
 						<spawn_bounds>
 							<min x="-5" y="-5" z="-5"/>
@@ -41401,23 +41401,23 @@
 						</spawn_bounds>
 						<graph_links/>
 					</c>
-					<c component_type="10" id="10007" cargo_zone_import_cargo_type="land_spawn" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
-						<spawn_transform 00="-0.158416" 02="-0.987373" 20="0.987373" 22="-0.158416" 30="-169.771759" 31="15.825187" 32="381.574158"/>
+					<c component_type="10" id="10007" cargo_zone_import_cargo_type="land_spawn,owner=Station Chickensaur" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+						<spawn_transform 00="-0.158416" 02="-0.987373" 20="0.987373" 22="-0.158416" 30="-165.89595" 31="15.825187" 32="386.620026"/>
 						<spawn_bounds>
 							<min x="-5" y="-5" z="-5"/>
 							<max x="5" y="5" z="5"/>
 						</spawn_bounds>
 						<graph_links/>
 					</c>
-					<c component_type="10" id="10008" cargo_zone_import_cargo_type="land_spawn" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
-						<spawn_transform 00="-0.082893" 02="-0.996558" 20="0.996558" 22="-0.082893" 30="-187.801193" 31="15.88082" 32="355.509155"/>
+					<c component_type="10" id="10008" cargo_zone_import_cargo_type="land_spawn,owner=Station Chickensaur" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+						<spawn_transform 00="-0.082893" 02="-0.996558" 20="0.996558" 22="-0.082893" 30="-187.801193" 31="15.88082" 32="355.451691"/>
 						<spawn_bounds>
 							<min x="-5" y="-5" z="-5"/>
 							<max x="5" y="5" z="5"/>
 						</spawn_bounds>
 						<graph_links/>
 					</c>
-					<c component_type="10" id="10009" cargo_zone_import_cargo_type="turret,turret_type=bunker" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+					<c component_type="10" id="10009" cargo_zone_import_cargo_type="turret,turret_type=bunker,owner=Station Chickensaur" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
 						<spawn_transform 00="-0.013061" 02="0.999915" 20="-0.999915" 22="-0.013061" 30="-120.68988" 31="14.635399" 32="390.63028"/>
 						<spawn_bounds>
 							<min x="-5" y="-5" z="-5"/>
@@ -41425,7 +41425,7 @@
 						</spawn_bounds>
 						<graph_links/>
 					</c>
-					<c component_type="10" id="10010" cargo_zone_import_cargo_type="turret,turret_type=bunker" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+					<c component_type="10" id="10010" cargo_zone_import_cargo_type="turret,turret_type=bunker,owner=Station Chickensaur" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
 						<spawn_transform 00="-0.509997" 02="-0.860176" 10="-0.044606" 11="0.998655" 12="0.026447" 20="0.859019" 21="0.051857" 22="-0.509311" 30="-191.090195" 31="20.10211" 32="243.699875"/>
 						<spawn_bounds>
 							<min x="-5" y="-5" z="-5"/>
@@ -41433,8 +41433,82 @@
 						</spawn_bounds>
 						<graph_links/>
 					</c>
-					<c component_type="10" id="10053" cargo_zone_import_cargo_type="turret,turret_type=SAM_small" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+					<c component_type="10" id="10053" cargo_zone_import_cargo_type="turret,turret_type=SAM_small,owner=Checkpoint Tom" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
 						<spawn_transform 00="0.818372" 01="0.012569" 02="-0.574551" 10="-0.060908" 11="0.996027" 12="-0.064967" 20="0.571451" 21="0.088163" 22="0.815886" 30="435.480591" 31="83.258118" 32="-393.791687"/>
+						<spawn_bounds>
+							<min x="-5" y="-5" z="-5"/>
+							<max x="5" y="5" z="5"/>
+						</spawn_bounds>
+						<graph_links/>
+					</c>
+					<c component_type="10" id="10361" cargo_zone_import_cargo_type="turret,turret_type=SAM,owner=Station Chickensaur" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+						<spawn_transform 00="0.536952" 02="-0.843613" 20="0.843613" 22="0.536952" 30="-174.480347" 31="15.660576" 32="456.728882"/>
+						<spawn_bounds>
+							<min x="-5" y="-5" z="-5"/>
+							<max x="5" y="5" z="5"/>
+						</spawn_bounds>
+						<graph_links/>
+					</c>
+					<c component_type="10" id="10362" cargo_zone_import_cargo_type="turret,turret_type=SAM_small,owner=Station Chickensaur" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+						<spawn_transform 00="-0.82753" 02="-0.561422" 20="0.561422" 22="-0.82753" 30="-103.297867" 31="18.548151" 32="459.16748"/>
+						<spawn_bounds>
+							<min x="-5" y="-5" z="-5"/>
+							<max x="5" y="5" z="5"/>
+						</spawn_bounds>
+						<graph_links/>
+					</c>
+					<c component_type="11" id="10363" name="land_path,precision=0" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+						<spawn_transform 30="-186.183441" 31="16.385691" 32="355.252594"/>
+						<spawn_bounds>
+							<min x="-10" y="-10" z="-10"/>
+							<max x="10" y="10" z="10"/>
+						</spawn_bounds>
+						<graph_links>
+							<l value="4668"/>
+						</graph_links>
+					</c>
+					<c component_type="11" id="10364" name="land_path,precision=0" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+						<spawn_transform 30="340.591705" 31="19.756115" 32="-16.94446"/>
+						<spawn_bounds>
+							<min x="-10" y="-10" z="-10"/>
+							<max x="10" y="10" z="10"/>
+						</spawn_bounds>
+						<graph_links>
+							<l value="4692"/>
+							<l value="4691"/>
+							<l value="4693"/>
+							<l value="4690"/>
+							<l value="4694"/>
+						</graph_links>
+					</c>
+					<c component_type="11" id="10365" name="land_path,precision=0" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+						<spawn_transform 30="337.099884" 31="24.278126" 32="-81.702965"/>
+						<spawn_bounds>
+							<min x="-10" y="-10" z="-10"/>
+							<max x="10" y="10" z="10"/>
+						</spawn_bounds>
+						<graph_links>
+							<l value="10364"/>
+						</graph_links>
+					</c>
+					<c component_type="10" id="10368" cargo_zone_import_cargo_type="land_spawn,owner=Checkpoint Tom" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+						<spawn_transform 30="313.770416" 31="20.454227" 32="-22.71232"/>
+						<spawn_bounds>
+							<min x="-5" y="-5" z="-5"/>
+							<max x="5" y="5" z="5"/>
+						</spawn_bounds>
+						<graph_links/>
+					</c>
+					<c component_type="10" id="10369" cargo_zone_import_cargo_type="turret,turret_type=bunker,owner=Checkpoint Tom" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+						<spawn_transform 00="-0.925115" 02="0.379686" 20="-0.379686" 22="-0.925115" 30="466.917664" 31="17.152754" 32="37.298973"/>
+						<spawn_bounds>
+							<min x="-5" y="-5" z="-5"/>
+							<max x="5" y="5" z="5"/>
+						</spawn_bounds>
+						<graph_links/>
+					</c>
+					<c component_type="10" id="10371" cargo_zone_import_cargo_type="land_spawn,owner=Checkpoint Tom" dynamic_object_type="2" character_outfit_category="11" character_type="1" vehicle_file_store="1">
+						<spawn_transform 30="387.423676" 31="16.436592" 32="15.640876"/>
 						<spawn_bounds>
 							<min x="-5" y="-5" z="-5"/>
 							<max x="5" y="5" z="5"/>

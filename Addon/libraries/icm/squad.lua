@@ -157,8 +157,10 @@ function Squad.getLeader(squad)
 	for _, vehicle_object in pairs(squad.vehicles) do
 		return vehicle_object
 	end
-	d.print("(Squad.getLeader) Empty "..squad.vehicle_type.." squad detected at index "..squad.index, true, 1)
-	Squad.disband(squad.index, "getLeader failed")
+
+	-- Squad is empty
+	-- Do not try to "fix" by disbanding here, as this can get called while in the processing of creating a squad
+	return nil
 end
 
 --- Adds a vehicle to the specified squad.
@@ -260,6 +262,13 @@ function Squad.disband(squad_index, reason)
 
 	-- Delete the squad from the squadrons table
 	g_savedata.ai_army.squadrons[squad_index] = nil
+
+	-- Remove all references to this squad from islands
+	for island_index, island in pairs(g_savedata.islands) do
+		if island.assigned_squad_index == squad_index then
+			island.assigned_squad_index = -1
+		end
+	end
 
 	d.print("(Squad.disband) Disbanded squad "..tostring(squad_index).." for reason: "..(reason or "Unknown"), true, 0)
 	return true

@@ -10,6 +10,7 @@ require("libraries.addon.script.debugging")
 require("libraries.addon.spatial.spatialGrid")
 require("libraries.addon.components.tags")
 require("libraries.utils.string")
+require("libraries.addon.callbacks.binder.binder")
 
 -- library name
 IslandRegistry = {}
@@ -37,6 +38,9 @@ IslandRegistry = {}
 
 
 ]]
+
+-- Put after the islands are initialized
+ISLAND_REGISTRY_SETUP_MAIN_PRIORITY = ISLAND_SETUP_MAIN_PRIORITY + 1
 
 --[[
 
@@ -194,3 +198,6 @@ function IslandRegistry.getLandAccessMap(land_access)
 	IslandRegistry.ensureReady()
 	return IslandRegistry.data.by_land_access[land_access] or {}
 end
+
+-- Bind rebuild to setupMain
+Binder.bind.setupMain(IslandRegistry.rebuild, ISLAND_REGISTRY_SETUP_MAIN_PRIORITY)

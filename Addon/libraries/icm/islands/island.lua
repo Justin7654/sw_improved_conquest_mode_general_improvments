@@ -1,4 +1,10 @@
--- required libraries
+--[[
+
+
+	Library Setup
+
+
+]]
 require("libraries.addon.script.debugging")
 require("libraries.addon.script.players")
 require("libraries.addon.components.tags")
@@ -9,6 +15,14 @@ Island = {}
 
 -- shortened library name
 is = Island
+
+--[[
+
+
+	Classes
+
+
+]]
 
 ---@class IslandZones
 ---@field turrets table
@@ -47,6 +61,32 @@ is = Island
 ---@field production_timer number
 
 ---@class PLAYER_ISLAND: ISLAND
+
+--[[
+
+
+	Constants
+
+
+]]
+
+ISLAND_SETUP_MAIN_PRIORITY = 1 --TODO: Implement with binder
+
+--[[
+
+
+	Variables
+
+
+]]
+
+--[[
+
+
+	Functions
+
+
+]]
 
 --- Creates a island class
 ---	@param island_data SWZone

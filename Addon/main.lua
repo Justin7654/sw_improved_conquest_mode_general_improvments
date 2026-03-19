@@ -913,9 +913,9 @@ function setupMain(is_world_create)
 			end
 
 			d.print("Spawn zone linking took: "..(millisecondsSince(start_time)/1000).."s", true, 0)
-			start_time = s.getTimeMillisec()
-
+						
 			d.print("setting up additional data...")
+			start_time = s.getTimeMillisec()
 
 			-- sets up their positions for sweep and prune
 			for island_index, island in pairs(g_savedata.islands) do
@@ -986,9 +986,11 @@ function setupMain(is_world_create)
 			s.removeMapObject(-1, g_savedata.player_base_island.ui_id)
 			s.removeMapObject(-1, g_savedata.ai_base_island.ui_id)
 		end
-	end
 
-	IslandRegistry.rebuild()
+		start_time = s.getTimeMillisec()
+		bindedSetupMain(is_world_create)
+		d.print("bindedSetupMain took: "..(millisecondsSince(start_time)/1000).."s", true, 0)
+	end
 
 	g_savedata.info.setup = true
 	-- this one will reset every reload/load of the world, this ensures that tracebacks wont be enabled before setupMain is finished.

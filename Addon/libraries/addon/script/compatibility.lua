@@ -8,7 +8,7 @@
 
 -- required libraries
 require("libraries.addon.script.debugging")
-require("libraries.icm.island")
+require("libraries.icm.islands.island")
 require("libraries.addon.script.setup")
 
 -- library name

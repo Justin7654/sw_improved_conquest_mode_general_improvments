@@ -26,7 +26,7 @@ limitations under the License.
 --- Developed using LifeBoatAPI - Stormworks Lua plugin for VSCode - https://code.visualstudio.com/download (search "Stormworks Lua with LifeboatAPI" extension)
 --- If you have any issues, please report them here: https://github.com/nameouschangey/STORMWORKS_VSCodeExtension/issues - by Nameous Changey
 
-ADDON_VERSION = "(0.4.0.27)"
+ADDON_VERSION = "(0.4.0.28)"
 IS_DEVELOPMENT_VERSION = string.match(ADDON_VERSION, "(%d%.%d%.%d%.%d)")
 
 SHORT_ADDON_NAME = "ICM"
@@ -219,7 +219,7 @@ SQUAD = {
 addon_setup = false
 
 g_savedata = {
-	ai_base_island = nil, ---@type AI_ISLAND
+	ai_base_island = nil, ---@type ISLAND
 	player_base_island = nil,
 	islands = {},
 	loaded_islands = {}, -- islands which are loaded
@@ -405,12 +405,15 @@ require("libraries.addon.spatial.spatialGridDefinitions") -- spatial grid defini
 require("libraries.addon.vehicles.ai") -- functions relating to their AI
 require("libraries.addon.vehicles.characters") -- functions for characters, such as setting them into seats.
 
-require("libraries.icm.capturePointPayments") -- controls the payroll system for how many islands you hold.
 require("libraries.icm.cargo") -- functions relating to the Convoys and Cargo Vehicles
-require("libraries.icm.island") -- functions relating to islands
 require("libraries.icm.objective") -- functions for the main objectives.
 require("libraries.icm.spawnModifiers") -- functions relating to the Adaptive AI
 require("libraries.icm.squad") -- functions for squads
+
+require("libraries.icm.islands.island") -- functions relating to islands
+require("libraries.icm.islands.capturePointPayments") -- controls the payroll system for how many islands you hold.
+require("libraries.icm.islands.islandRegistry") -- optimized island lookups and handles the island_grid
+require("libraries.icm.islands.captureSystem") -- capture progress and faction change logic
 
 require("libraries.icm.vehicles.vehicleGroup") -- functions for getting the vehicle group_id from the vehicle_id.
 require("libraries.icm.vehicles.vehicle") -- functions related to vehicles, and parsing data on them
@@ -720,7 +723,6 @@ function setupMain(is_world_create)
 
 			start_time = s.getTimeMillisec()
 			local spawn_zones = sup.spawnZones()
-			start_time = s.getTimeMillisec()
 			-- add them to a list indexed by which island the zone belongs to
 			-- local tile_zones = sup.sortSpawnZones(spawn_zones)
 
@@ -733,7 +735,7 @@ function setupMain(is_world_create)
 
 			d.print("creating player's main base...", true, 0)
 
-			-- init player base
+			-- get all island zones
 			local islands = s.getZones("capture")
 
 			-- filter NSO and non NSO exclusive islands
@@ -742,52 +744,26 @@ function setupMain(is_world_create)
 					d.print("removed "..island.name.." because it is NSO exclusive", true, 0)
 					table.remove(islands, island_index)
 				elseif g_savedata.info.mods.NSO and Tags.has(island.tags, "not_NSO") then
-					table.remove(islands, island_index)
 					d.print("removed "..island.name.." because it's incompatible with NSO", true, 0)
+					table.remove(islands, island_index)
 				end
 			end
-
+			
+			-- setup the player base
 			for island_index, island in ipairs(islands) do
 
 				local island_tile = s.getTile(island.transform)
 				if island_tile.name == start_island.name or (island_tile.name == "data/tiles/island_43_multiplayer_base.xml" and g_savedata.player_base_island == nil) then
-					if not Tags.has(island, "not_main_base") then
+					if not Tags.has(island.tags, "not_main_base") then
 						local flag = s.spawnAddonComponent(m.multiply(island.transform, flag_prefab.transform), s.getAddonIndex(), flag_prefab.location_index, flag_prefab.object_index, 0)
-						---@class PLAYER_ISLAND
-						g_savedata.player_base_island = {
-							name = island.name,
-							index = island_index,
-							flag_vehicle = flag,
-							transform = island.transform,
-							tags = island.tags,
-							faction = ISLAND.FACTION.PLAYER,
-							is_contested = false,
-							capture_timer = g_savedata.settings.CAPTURE_TIME,
-							ui_id = server.getMapID() --[[@as SWUI_ID]],
-							assigned_squad_index = -1,
-							zones = {
-								turrets = {},
-								land = {},
-								sea = {}
-							},
-							payroll_multiplier = Tags.getValue(island.tags, "payroll_multiplier", false) or 1,
-							ai_capturing = 0,
-							players_capturing = 0,
-							defenders = 0,
-							is_scouting = false,
-							last_defended = 0,
-							cargo = {
-								oil = 0,
-								jet_fuel = 0,
-								diesel = 0
-							},
-							cargo_transfer = {
-								oil = 0,
-								jet_fuel = 0,
-								diesel = 0
-							},
-							object_type = "island"
-						}
+						g_savedata.player_base_island = Island.createIslandData(
+							island,
+							island_index,
+							ISLAND.FACTION.PLAYER,
+							flag,
+							g_savedata.settings.CAPTURE_TIME,
+							{ oil = 0, jet_fuel = 0, diesel = 0 }
+						)
 						
 						-- only break if the island's name is the same as the island the player is starting at
 						-- as breaking if its the multiplayer base could cause the player to always start at the multiplayer base in specific scenarios
@@ -831,41 +807,15 @@ function setupMain(is_world_create)
 			--local island_tile, is_success = s.getTile(ai_island.transform)
 
 			local flag = s.spawnAddonComponent(m.multiply(ai_island.transform, flag_prefab.transform), s.getAddonIndex(), flag_prefab.location_index, flag_prefab.object_index, 0)
-			---@class AI_ISLAND
-			g_savedata.ai_base_island = {
-				name = ai_island.name,
-				index = ai_base_index,
-				flag_vehicle = flag,
-				transform = ai_island.transform,
-				tags = ai_island.tags,
-				faction = ISLAND.FACTION.AI,
-				is_contested = false,
-				capture_timer = 0,
-				ui_id = server.getMapID() --[[@as SWUI_ID]],
-				assigned_squad_index = -1,
-				production_timer = 0,
-				zones = {
-					turrets = {},
-					land = {},
-					sea = {}
-				},
-				ai_capturing = 0,
-				players_capturing = 0,
-				defenders = 0,
-				is_scouting = false,
-				last_defended = 0,
-				cargo = {
-					oil = 7500,
-					jet_fuel = 7500,
-					diesel = 7500
-				},
-				cargo_transfer = {
-					oil = 0,
-					jet_fuel = 0,
-					diesel = 0
-				},
-				object_type = "island"
-			}
+			g_savedata.ai_base_island = Island.createIslandData(
+				ai_island,
+				ai_base_index,
+				ISLAND.FACTION.AI,
+				flag,
+				0,
+				{ oil = 7500, jet_fuel = 7500, diesel = 7500 },
+				0
+			)
 
 			d.print("Setup AI Base island: "..g_savedata.ai_base_island.index.." \""..g_savedata.ai_base_island.name.."\"", true, 0)
 
@@ -876,55 +826,28 @@ function setupMain(is_world_create)
 			d.print("setting up remaining neutral islands...", true, 0)
 
 			local islands_count = table.length(islands) * g_savedata.settings.ISLAND_COUNT
+			local spawned_neutral_islands = 0
 
 			-- set up remaining neutral islands
 			for island_index, island in pairs(islands) do
-				local island_tile, _ = s.getTile(island.transform)
-
 				local flag = s.spawnAddonComponent(m.multiply(island.transform, flag_prefab.transform), s.getAddonIndex(), flag_prefab.location_index, flag_prefab.object_index, 0)
-				---@class ISLAND
-				local new_island = {
-					name = island.name,
-					index = island_index,
-					flag_vehicle = flag,
-					transform = island.transform,
-					tags = island.tags,
-					faction = ISLAND.FACTION.NEUTRAL,
-					is_contested = false,
-					capture_timer = g_savedata.settings.CAPTURE_TIME / 2,
-					ui_id = server.getMapID() --[[@as SWUI_ID]],
-					assigned_squad_index = -1,
-					zones = {
-						turrets = {},
-						land = {},
-						sea = {}
-					},
-					payroll_multiplier = Tags.getValue(island.tags, "payroll_multiplier", false) or 1,
-					ai_capturing = 0,
-					players_capturing = 0,
-					defenders = 0,
-					is_scouting = false,
-					last_defended = 0,
-					cargo = {
-						oil = 0,
-						jet_fuel = 0,
-						diesel = 0
-					},
-					cargo_transfer = {
-						oil = 0,
-						jet_fuel = 0,
-						diesel = 0
-					},
-					object_type = "island"
-				}
+				local new_island = Island.createIslandData(
+					island,
+					island_index,
+					ISLAND.FACTION.NEUTRAL,
+					flag,
+					g_savedata.settings.CAPTURE_TIME / 2,
+					{ oil = 0, jet_fuel = 0, diesel = 0 }
+				)
 
 				--new_island.zones = tile_zones[island_tile.name]
 
 				g_savedata.islands[new_island.index] = new_island
+				spawned_neutral_islands = spawned_neutral_islands + 1
 				d.print("Setup neutral island: "..new_island.index.." \""..island.name.."\"", true, 0)
 
 				-- stop creating new islands if we've reached the island limit
-				if(table.length(g_savedata.islands) >= islands_count) then
+				if spawned_neutral_islands >= islands_count then
 					break
 				end
 			end
@@ -933,6 +856,20 @@ function setupMain(is_world_create)
 			start_time = s.getTimeMillisec()
 
 			-- link the zones to the island which is closest to the zone
+			local all_islands = {
+				g_savedata.ai_base_island,
+				g_savedata.player_base_island
+			}
+
+			local islands_by_name = {
+				[g_savedata.ai_base_island.name] = g_savedata.ai_base_island,
+				[g_savedata.player_base_island.name] = g_savedata.player_base_island
+			}
+
+			for _, island in pairs(g_savedata.islands) do
+				table.insert(all_islands, island)
+				islands_by_name[island.name] = island
+			end
 
 			for zone_type, zones in pairs(spawn_zones) do
 
@@ -948,41 +885,17 @@ function setupMain(is_world_create)
 						end
 
 						-- find the capture point which shares the name of the zone's owner override
-						
-						-- check ai base island
-						if g_savedata.ai_base_island.name == owner_name then
-							table.insert(g_savedata.ai_base_island.zones[zone_type], zone)
+						local owner_island = islands_by_name[owner_name]
+						if owner_island then
+							table.insert(owner_island.zones[zone_type], zone)
 							goto setupMain_setupIslands_setupZones_continue_zone
-						end
-
-						-- check player base island
-						if g_savedata.player_base_island.name == owner_name then
-							table.insert(g_savedata.player_base_island.zones[zone_type], zone)
-							goto setupMain_setupIslands_setupZones_continue_zone
-						end
-
-						-- check other islands
-						for _, island in pairs(g_savedata.islands) do
-							if island.name == owner_name then
-								table.insert(island.zones[zone_type], zone)
-								goto setupMain_setupIslands_setupZones_continue_zone
-							end
 						end
 					end
 				
-					-- get start with distance from ai island
-					local closest_island = g_savedata.ai_base_island
-					local closest_distance = matrix.xzDistance(zone.transform, g_savedata.ai_base_island.transform)
-
-					-- check if player base is closer
-					local player_island_distance = matrix.xzDistance(zone.transform, g_savedata.player_base_island.transform)
-					if closest_distance > player_island_distance then
-						closest_distance = player_island_distance
-						closest_island = g_savedata.player_base_island --[[@as PLAYER_ISLAND]]
-					end
-
-					-- check all of the other islands
-					for _, island in pairs(g_savedata.islands) do
+					local closest_island = all_islands[1]
+					local closest_distance = matrix.xzDistance(zone.transform, closest_island.transform)
+					for island_index = 2, #all_islands do
+						local island = all_islands[island_index]
 						local island_distance = matrix.xzDistance(zone.transform, island.transform)
 						if closest_distance > island_distance then
 							closest_distance = island_distance
@@ -1075,6 +988,8 @@ function setupMain(is_world_create)
 		end
 	end
 
+	IslandRegistry.rebuild()
+
 	g_savedata.info.setup = true
 	-- this one will reset every reload/load of the world, this ensures that tracebacks wont be enabled before setupMain is finished.
 	addon_setup = true
@@ -1118,7 +1033,7 @@ function captureIsland(island, override, peer_id)
 	if faction_to_set == ISLAND.FACTION.AI then
 		onCaptureIsland(island, faction_to_set, island.faction)
 		island.capture_timer = 0
-		island.faction = ISLAND.FACTION.AI
+		IslandRegistry.setFaction(island, ISLAND.FACTION.AI)
 		g_savedata.is_attack = false
 		updatePeerIslandMapData(-1, island)
 
@@ -1144,7 +1059,7 @@ function captureIsland(island, override, peer_id)
 	elseif faction_to_set == ISLAND.FACTION.PLAYER then
 		onCaptureIsland(island, faction_to_set, island.faction)
 		island.capture_timer = g_savedata.settings.CAPTURE_TIME
-		island.faction = ISLAND.FACTION.PLAYER
+		IslandRegistry.setFaction(island, ISLAND.FACTION.PLAYER)
 		updatePeerIslandMapData(-1, island)
 
 		if peer_id then
@@ -1167,7 +1082,7 @@ function captureIsland(island, override, peer_id)
 	elseif faction_to_set == ISLAND.FACTION.NEUTRAL then
 		onCaptureIsland(island, faction_to_set, island.faction)
 		island.capture_timer = g_savedata.settings.CAPTURE_TIME/2
-		island.faction = ISLAND.FACTION.NEUTRAL
+		IslandRegistry.setFaction(island, ISLAND.FACTION.NEUTRAL)
 		updatePeerIslandMapData(-1, island)
 
 		if peer_id then
@@ -1848,9 +1763,7 @@ function tickGamemode(game_ticks)
 	end
 
 	-- tick capture rates
-	--local capture_tick_rate = g_savedata.settings.CAPTURE_TIME/400/5 -- time it takes for it to move 0.25%
-	local capture_tick_rate = 60 -- tick every second.
-	if isTickID(0, capture_tick_rate) then -- ticks the time it should take to move 0.25%
+	if isTickID(0, CAPTURE_TICK_RATE) then -- ticks the time it should take to move 0.25%
 		-- check all ai that are within the capture radius
 		for group_id, island in pairs(g_savedata.sweep_and_prune.ai_pairs) do
 			local vehicle_object, _, _ = Squad.getVehicle(group_id)
@@ -1967,7 +1880,7 @@ function tickGamemode(game_ticks)
 		end
 
 		-- tick spawning for ai vehicles (to remove as will be replaced to be dependant on logistics system)
-		g_savedata.ai_base_island.production_timer = g_savedata.ai_base_island.production_timer + capture_tick_rate * game_ticks
+		g_savedata.ai_base_island.production_timer = g_savedata.ai_base_island.production_timer + CAPTURE_TICK_RATE * game_ticks
 		if g_savedata.ai_base_island.production_timer > g_savedata.settings.AI_PRODUCTION_TIME_BASE then
 			g_savedata.ai_base_island.production_timer = 0
 
@@ -1996,107 +1909,33 @@ function tickGamemode(game_ticks)
 				end
 			end
 
-			-- display new capture data
-			if island.players_capturing > 0 and island.ai_capturing > 0 and g_savedata.settings.CONTESTED_MODE then -- if theres ai and players capping, and if contested mode is enabled
-				if island.is_contested == false then -- notifies that an island is being contested
-					s.notify(-1, "ISLAND CONTESTED", "An island is being contested!", 1)
-					island.is_contested = true
-				end
-			else
-				island.is_contested = false
-				if island.players_capturing > 0 and g_savedata.settings.CAPTURE_TIME > island.capture_timer then -- tick player progress if theres one or more players capping
-					island.capture_timer = island.capture_timer + ((ISLAND_CAPTURE_AMOUNT_PER_SECOND * 5) * capture_speeds[math.min(island.players_capturing, 3)]) * capture_tick_rate * game_ticks
+			-- Update capture timer based on who's capturing
+			local contested_before = island.is_contested
+			CaptureSystem.updateCaptureTimer(island, island.ai_capturing, island.players_capturing, game_ticks)
 
-				elseif island.ai_capturing > 0 and 0 < island.capture_timer then -- tick AI progress if theres one or more ai capping
-					island.capture_timer = island.capture_timer - (ISLAND_CAPTURE_AMOUNT_PER_SECOND * capture_speeds[math.min(island.ai_capturing, 3)]) * capture_tick_rate * game_ticks
-				end
+			-- Check if island should change faction and trigger events if it did
+			local new_faction = CaptureSystem.resolveFactionChange(island)
+			if new_faction then
+				captureIsland(island, new_faction, nil)
 			end
 
-			-- makes sure its within limits
-			island.capture_timer = math.clamp(island.capture_timer, 0, g_savedata.settings.CAPTURE_TIME)
-			
-			-- displays tooltip on vehicle
-			local cap_percent = island.capture_timer/g_savedata.settings.CAPTURE_TIME * 100
-
-			local capturing_status = "Revolting" -- should never happen, but why not
-			if island.is_contested then -- if the point is contested (both teams trying to cap)
-				--s.setVehicleTooltip(island.flag_vehicle.id, "Contested: "..cap_percent.."%")
-				capturing_status = "Contested"
-				cp_status = "Remove the ${enemy_capturing_count} enemies to resume capturing."
-			elseif island.faction ~= ISLAND.FACTION.PLAYER then -- if the player doesn't own the point
-				if island.ai_capturing == 0 and island.players_capturing == 0 then -- if nobody is capping the point
-					--s.setVehicleTooltip(island.flag_vehicle.id, "Capture: "..cap_percent.."%")
-					capturing_status = "Capture"
-					cp_status = "Get closer to the capture point to begin capturing."
-				elseif island.ai_capturing == 0 then -- if players are capping the point
-					--s.setVehicleTooltip(island.flag_vehicle.id, "Capturing: "..cap_percent.."%")
-					capturing_status = "Capturing"
-					cp_status = "${time_until_faction_change} until under player control."
-				else -- if ai is capping the point
-					--s.setVehicleTooltip(island.flag_vehicle.id, "Losing: "..cap_percent.."%")
-					capturing_status = "Losing"
-					cp_status = "${time_until_faction_change} until under enemy control."
-				end
-			else -- if the player does own the point
-				if island.ai_capturing == 0 and island.players_capturing == 0 or cap_percent == 100 then -- if nobody is capping the point or its at 100%
-					--s.setVehicleTooltip(island.flag_vehicle.id, "Captured: "..cap_percent.."%")
-					capturing_status = "Captured"
-					cp_status = "Under full player control."
-				elseif island.ai_capturing == 0 then -- if players are capping the point
-					--s.setVehicleTooltip(island.flag_vehicle.id, "Re-Capturing: "..cap_percent.."%")
-					capturing_status = "Re-Capturing"
-					cp_status = "${time_until_faction_change} until under full player control."
-				else -- if ai is capping the point
-					--s.setVehicleTooltip(island.flag_vehicle.id, "Losing: "..cap_percent.."%")
-					capturing_status = "Losing"
-					cp_status = "${time_until_faction_change} until under enemy control."
-				end
+			-- Notify if it just became contested
+			if island.is_contested and not contested_before then
+				s.notify(-1, "ISLAND CONTESTED", "An island is being contested!", 1)
+				CaptureSystem.markDirty(island.index) -- So the tooltip updates
 			end
 
-			-- format the tooltip
-			local capture_vehicle_tooltip = ("%s: %0.2f%%\n%s"):format(capturing_status, cap_percent, cp_status)
-
-			-- format in the field enemy_capturing_count
-			capture_vehicle_tooltip = capture_vehicle_tooltip:setField("enemy_capturing_count", island.ai_capturing)
-
-			-- format in the field time_until_faction_change
-			if capture_vehicle_tooltip:hasField("time_until_faction_change") then
-				-- calculate the time until the faction changes.
-				local time_till_faction_change = 0
-
-				local capture_rate = 0
-				
-				if island.players_capturing > 0 and g_savedata.settings.CAPTURE_TIME > island.capture_timer then -- tick player progress if theres one or more players capping
-					capture_rate = ((ISLAND_CAPTURE_AMOUNT_PER_SECOND * 5) * capture_speeds[math.min(island.players_capturing, 3)]) * capture_tick_rate * game_ticks
-					
-					time_till_faction_change = (g_savedata.settings.CAPTURE_TIME-island.capture_timer)/capture_rate*capture_tick_rate/60
-
-				elseif island.ai_capturing > 0 and 0 < island.capture_timer then -- tick AI progress if theres one or more ai capping
-					capture_rate = (ISLAND_CAPTURE_AMOUNT_PER_SECOND * capture_speeds[math.min(island.ai_capturing, 3)]) * capture_tick_rate * game_ticks
-					
-					time_till_faction_change = island.capture_timer/capture_rate*capture_tick_rate/60
-				end
-
-				-- format it into time
-				local formatted_timer = string.formatTime(time_formats.yMdhms, time_till_faction_change, false)
-
-				-- set the time_until_faction_change field
-				capture_vehicle_tooltip = capture_vehicle_tooltip:setField("time_until_faction_change", formatted_timer, true)
-
-				-- add the capture timer debug if the flag show_capture_timer_debug is enabled 
-				if g_savedata.flags.show_capture_timer_debug then
-					capture_vehicle_tooltip = capture_vehicle_tooltip..(" capture_rate:%s time_till_faction_change:%s formatted_timer:%s"):format(capture_rate, time_till_faction_change, formatted_timer)
-				end
+			-- Build and set tooltip if its changed
+			if CaptureSystem.checkAndClearDirty(island.index) then
+				local capture_vehicle_tooltip = CaptureSystem.buildCaptureTooltip(island)
+				s.setVehicleTooltip(island.flag_vehicle.id, capture_vehicle_tooltip)
 			end
-
-			s.setVehicleTooltip(island.flag_vehicle.id, capture_vehicle_tooltip)
 
 			updatePeerIslandMapData(-1, island)
 
 			-- resets amount capping
 			island.ai_capturing = 0
 			island.players_capturing = 0
-			captureIsland(island)
 		end
 	end
 
@@ -4832,7 +4671,7 @@ function tickIslands(game_ticks)
 
 			local island, got_island = Island.getDataFromIndex(island_index)
 
-			if not got_island then
+			if island == nil or not got_island then
 				d.print("(tickIslands) Island not found! island_index: "..tostring(island_index), true, 1)
 				goto break_island
 			end
@@ -5626,28 +5465,28 @@ end
 --------------------------------------------------------------------------------
 
 --- @param squad squadron
---- @param target_island AI_ISLAND|ISLAND|PLAYER_ISLAND
+--- @param target_island ISLAND
 function setSquadCommandPatrol(squad, target_island)
 	squad.target_island = target_island
 	Squad.setCommand(squad, SQUAD.COMMAND.PATROL)
 end
 
 --- @param squad squadron
---- @param target_island AI_ISLAND|ISLAND|PLAYER_ISLAND
+--- @param target_island ISLAND
 function setSquadCommandStage(squad, target_island)
 	squad.target_island = target_island
 	Squad.setCommand(squad, SQUAD.COMMAND.STAGE)
 end
 
 --- @param squad squadron
---- @param target_island AI_ISLAND|ISLAND|PLAYER_ISLAND
+--- @param target_island ISLAND
 function setSquadCommandAttack(squad, target_island)
 	squad.target_island = target_island
 	Squad.setCommand(squad, SQUAD.COMMAND.ATTACK)
 end
 
 --- @param squad squadron
---- @param target_island AI_ISLAND|ISLAND|PLAYER_ISLAND
+--- @param target_island ISLAND
 function setSquadCommandDefend(squad, target_island)
 	squad.target_island = target_island
 	Squad.setCommand(squad, SQUAD.COMMAND.DEFEND)

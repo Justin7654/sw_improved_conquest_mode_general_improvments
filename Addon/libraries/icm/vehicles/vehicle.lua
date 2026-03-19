@@ -8,7 +8,7 @@ require("libraries.addon.script.players")
 require("libraries.addon.script.safeServer")
 require("libraries.addon.script.matrix")
 require("libraries.icm.squad")
-require("libraries.icm.island")
+require("libraries.icm.islands.island")
 require("libraries.icm.spawnModifiers")
 require("libraries.icm.cargo")
 require("libraries.icm.objective")
@@ -363,7 +363,7 @@ end
 ---@param requested_prefab string|integer|nil vehicle name or vehicle role, such as scout, will try to spawn that vehicle or type
 ---@param vehicle_type string? the vehicle type you want to spawn, such as boat, leave nil to ignore
 ---@param force_spawn boolean? if you want to force it to spawn, it will spawn at the ai's main base
----@param specified_island ISLAND|AI_ISLAND? the island you want it to spawn at
+---@param specified_island ISLAND? the island you want it to spawn at
 ---@param purchase_type integer? 0 for dont buy, 1 for free (cost will be 0 no matter what), 2 for free but it has lower stats, 3 for spend as much as you can but the less spent will result in lower stats. 
 ---@return boolean spawned_vehicle if the vehicle successfully spawned or not
 ---@return vehicle_object|string vehicle_object the vehicle's data if the the vehicle successfully spawned, otherwise its returns the error code
@@ -514,7 +514,7 @@ function Vehicle.spawn(requested_prefab, vehicle_type, force_spawn, specified_is
 				return false, "no islands to attack! cancelling spawning of attack vehicle"
 			end
 			for island_index, island in pairs(g_savedata.islands) do
-				if is.canSpawn(island, selected_prefab) and (selected_spawn_transform == nil or m.xzDistance(target.transform, island.transform) < m.xzDistance(target.transform, selected_spawn_transform)) then
+				if Island.canSpawnPrefab(island, selected_prefab) and (selected_spawn_transform == nil or m.xzDistance(target.transform, island.transform) < m.xzDistance(target.transform, selected_spawn_transform)) then
 					selected_spawn_transform = island.transform
 					selected_spawn = island_index
 				end
@@ -528,7 +528,7 @@ function Vehicle.spawn(requested_prefab, vehicle_type, force_spawn, specified_is
 			local islands_needing_checked = {}
 
 			for island_index, island in pairs(g_savedata.islands) do
-				if is.canSpawn(island, selected_prefab) then
+				if Island.canSpawnPrefab(island, selected_prefab) then
 					if not lowest_defenders or island.defenders < lowest_defenders then -- choose the island with the least amount of defence (A)
 						lowest_defenders = island.defenders -- set the new lowest defender amount on an island
 						selected_spawn_transform = island.transform
@@ -574,7 +574,7 @@ function Vehicle.spawn(requested_prefab, vehicle_type, force_spawn, specified_is
 			local valid_islands = {}
 			local valid_island_index = {}
 			for island_index, island in pairs(g_savedata.islands) do
-				if is.canSpawn(island, selected_prefab) then
+				if Island.canSpawnPrefab(island, selected_prefab) then
 					table.insert(valid_islands, island)
 					table.insert(valid_island_index, island_index)
 				end
@@ -589,7 +589,7 @@ function Vehicle.spawn(requested_prefab, vehicle_type, force_spawn, specified_is
 		-- if they specified the island they want it to spawn at
 		if not force_spawn then
 			-- if they did not force the vehicle to spawn
-			if is.canSpawn(specified_island, selected_prefab) then
+			if Island.canSpawnPrefab(specified_island, selected_prefab) then
 				selected_spawn_transform = specified_island.transform
 				selected_spawn = specified_island.index
 			end

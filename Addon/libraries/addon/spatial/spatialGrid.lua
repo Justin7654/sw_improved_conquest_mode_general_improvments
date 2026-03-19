@@ -40,12 +40,6 @@ SpatialGrid = {}
 ---@alias cellKey any
 ---@alias cellContents table<spatialObjectID, {obj: spatialObjectID, x: number, z: number}>
 
----@class SpatialGrid
----@field cell_size number The size of each grid cell
----@field cells table<cellKey, cellContents> The grid cells
----@field object_keys table<spatialObjectID, cellKey>
----@field stats {count: number, cells_used: number}
-
 --[[
 
 
@@ -56,15 +50,75 @@ SpatialGrid = {}
 
 --- Creates a new spatial grid
 --- @param cell_size number The size of each grid cell. Should be roughly the size of your typical query radius.
---- @return SpatialGrid grid The new spatial grid
 function SpatialGrid.new(cell_size)
-    ---@type SpatialGrid
-    return {
+    ---@class SpatialGrid
+    local newGrid = {
         cell_size = cell_size or 500,
-        cells = {},
-        object_keys = {},
-        stats = {count = 0, cells_used = 0}
+        cells = {}, ---@type table<cellKey, cellContents> The grid cells
+        object_keys = {}, ---@type table<spatialObjectID, cellKey>
+        stats = {count = 0, cells_used = 0},
+        frozen = false,  -- Whether the grid is frozen (no more modifications allowed)
+        add = SpatialGrid.add,
+        remove = SpatialGrid.remove,
+        update = SpatialGrid.update,
+        isObjectInGrid = SpatialGrid.isObjectInGrid,
+        clean = SpatialGrid.clean,
+        freeze = SpatialGrid.freeze,
+        query = SpatialGrid.query
     }
+    return newGrid
+end
+
+--- Freezes the grid, preventing you from making any more changes to it.
+--- Reduces the grids memory use by removing unneeded data, and allows for query optimizations.
+--- Frozen grids can not be unfrozen
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @return FrozenSpatialGrid frozenGrid The frozen grid
+function SpatialGrid.freeze(grid)
+    -- Remove all empty cells
+    SpatialGrid.clean(grid)
+    
+    -- Since the grid is no longer going to change, we can change the structure to make
+    -- querying faster. This changes it to a row/column system so querys can skip rows/columns
+    -- which are empty
+    local cell_size = grid.cell_size
+    local rows = {} ---@type table<integer, table<integer, cellContents>>
+    local rowRanges = {} ---@type table<integer, {minCx: integer, maxCx: integer}>
+    for _, cell in pairs(grid.cells) do
+        -- Convert the cell contents to a list so querying doesn't need to use pairs
+        local listCell = {}
+        for obj, pos in pairs(cell) do
+            table.insert(listCell, {obj=obj, x=pos.x, z=pos.z})
+        end
+
+        -- Calculate the cell's row and column
+        sampleObject = listCell[1]
+        local cx = math.floor(sampleObject.x / cell_size)
+        local cz = math.floor(sampleObject.z / cell_size)
+
+        -- Add the cell to its row
+        local row = rows[cz]
+        if not row then
+            row = {}
+            rows[cz] = row
+            rowRanges[cz] = {minCx = cx, maxCx = cx}
+        else
+            -- Used in querys to skip rows which don't have any cells in the query range
+            rowRanges[cz] = {minCx = math.min(rowRanges[cz].minCx, cx), maxCx = math.max(rowRanges[cz].maxCx, cx)}
+        end
+
+        row[cx] = listCell
+    end
+
+    ---@class FrozenSpatialGrid
+    local frozenGrid = {
+        cell_size = cell_size,
+        rows = rows,
+        rowRanges = rowRanges,
+        frozen = true,
+        query = SpatialGrid.queryFrozen
+    }
+    return frozenGrid
 end
 
 ---  Generates a unique integer key given cell coordinates
@@ -209,8 +263,7 @@ function SpatialGrid.query(grid, x, z, radius)
     for cz = min_z, max_z do
         local z_offset = cz * 1000000
         for cx = min_x, max_x do
-            local key = cx + z_offset
-            local cell = grid.cells[key]
+            local cell = grid.cells[cx + z_offset]
             
             if cell then
                 for obj, pos in pairs(cell) do
@@ -223,6 +276,59 @@ function SpatialGrid.query(grid, x, z, radius)
                     end
                 end
             end
+        end
+    end
+    
+    return result
+end
+
+--- Queries the grid for objects within a radius. Instead of looking up cell keys, this uses rows/columns
+--- to only check cells which exist.
+--- @param grid FrozenSpatialGrid The grid created using SpatialGrid.new()
+--- @param x number Center X
+--- @param z number Center Z
+--- @param radius number Radius to search
+--- @return spatialObjectID[] Found of objects found
+function SpatialGrid.queryFrozen(grid, x, z, radius)
+    local result = {}
+    local result_count = 1
+    local cell_size = grid.cell_size
+    local rows = grid.rows
+    local rowRanges = grid.rowRanges
+    
+    -- Calculate bounds of the cells to check
+    local min_x = math.floor((x - radius) / cell_size)
+    local max_x = math.floor((x + radius) / cell_size)
+    local min_z = math.floor((z - radius) / cell_size)
+    local max_z = math.floor((z + radius) / cell_size)
+    
+    local r_sq = radius * radius
+    
+    -- Iterate the cells
+    for cz = min_z, max_z do
+        local rowRange = rowRanges[cz]
+        if rowRange then
+            -- Skip if its cx range doesn't intersect with the query range
+            if rowRange.maxCx < min_x or rowRange.minCx > max_x then
+                goto skipRow
+            end
+
+            -- Loop through every cell in the row which is within the query range
+            local row = rows[cz]
+            for cx, cell in pairs(row) do
+                if cx >= min_x and cx <= max_x then
+                    for i=1, #cell do
+                        local obj_data = cell[i]
+                        local dx = x - obj_data.x
+                        local dz = z - obj_data.z
+                        if (dx * dx + dz * dz) <= r_sq then
+                            result[result_count] = obj_data.obj
+                            result_count = result_count + 1
+                        end
+                    end
+                end
+            end
+            ::skipRow::
         end
     end
     

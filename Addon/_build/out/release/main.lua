@@ -27,7 +27,7 @@ limitations under the License.
 --- Developed using LifeBoatAPI - Stormworks Lua plugin for VSCode - https://code.visualstudio.com/download (search "Stormworks Lua with LifeboatAPI" extension)
 --- If you have any issues, please report them here: https://github.com/nameouschangey/STORMWORKS_VSCodeExtension/issues - by Nameous Changey
 
-ADDON_VERSION = "(0.4.0.27)"
+ADDON_VERSION = "(0.4.0.28)"
 IS_DEVELOPMENT_VERSION = string.match(ADDON_VERSION, "(%d%.%d%.%d%.%d)")
 
 SHORT_ADDON_NAME = "ICM"
@@ -220,7 +220,7 @@ SQUAD = {
 addon_setup = false
 
 g_savedata = {
-	ai_base_island = nil, ---@type AI_ISLAND
+	ai_base_island = nil, ---@type ISLAND
 	player_base_island = nil,
 	islands = {},
 	loaded_islands = {}, -- islands which are loaded
@@ -6251,6 +6251,533 @@ Command.registerCommand(
 
 -- required libraries
 -- required libraries
+--[[
+
+
+	Library Setup
+
+
+]]
+--[[
+spatialGrid.lua
+
+Uses Spatial Hashing to add objects to buckets on a 2d grid
+Allows for fast lookup of nearby objects by only checking the buckets near the query point instead of every object in the world
+]]
+
+
+--[[
+
+
+    Library Setup
+
+
+]]
+
+-- required libraries
+
+SpatialGrid = {}
+
+--[[
+
+
+	Variables
+   
+
+]]
+
+--[[
+
+
+	Classes
+
+
+]]
+
+---@alias spatialObjectID number A unique identifier for an object in the spatial grid. (For example a vehicle ID)
+
+---@alias cellKey any
+---@alias cellContents table<spatialObjectID, {obj: spatialObjectID, x: number, z: number}>
+
+--[[
+
+
+	Functions         
+
+
+]]
+
+--- Creates a new spatial grid
+--- @param cell_size number The size of each grid cell. Should be roughly the size of your typical query radius.
+function SpatialGrid.new(cell_size)
+    ---@class SpatialGrid
+    local newGrid = {
+        cell_size = cell_size or 500,
+        cells = {}, ---@type table<cellKey, cellContents> The grid cells
+        object_keys = {}, ---@type table<spatialObjectID, cellKey>
+        stats = {count = 0, cells_used = 0},
+        frozen = false,  -- Whether the grid is frozen (no more modifications allowed)
+        add = SpatialGrid.add,
+        remove = SpatialGrid.remove,
+        update = SpatialGrid.update,
+        isObjectInGrid = SpatialGrid.isObjectInGrid,
+        clean = SpatialGrid.clean,
+        freeze = SpatialGrid.freeze,
+        query = SpatialGrid.query
+    }
+    return newGrid
+end
+
+--- Freezes the grid, preventing you from making any more changes to it.
+--- Reduces the grids memory use by removing unneeded data, and allows for query optimizations.
+--- Frozen grids can not be unfrozen
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @return FrozenSpatialGrid frozenGrid The frozen grid
+function SpatialGrid.freeze(grid)
+    -- Remove all empty cells
+    SpatialGrid.clean(grid)
+    
+    -- Since the grid is no longer going to change, we can change the structure to make
+    -- querying faster. This changes it to a row/column system so querys can skip rows/columns
+    -- which are empty
+    local cell_size = grid.cell_size
+    local rows = {} ---@type table<integer, table<integer, cellContents>>
+    local rowRanges = {} ---@type table<integer, {minCx: integer, maxCx: integer}>
+    for _, cell in pairs(grid.cells) do
+        -- Convert the cell contents to a list so querying doesn't need to use pairs
+        local listCell = {}
+        for obj, pos in pairs(cell) do
+            table.insert(listCell, {obj=obj, x=pos.x, z=pos.z})
+        end
+
+        -- Calculate the cell's row and column
+        sampleObject = listCell[1]
+        local cx = math.floor(sampleObject.x / cell_size)
+        local cz = math.floor(sampleObject.z / cell_size)
+
+        -- Add the cell to its row
+        local row = rows[cz]
+        if not row then
+            row = {}
+            rows[cz] = row
+            rowRanges[cz] = {minCx = cx, maxCx = cx}
+        else
+            -- Used in querys to skip rows which don't have any cells in the query range
+            rowRanges[cz] = {minCx = math.min(rowRanges[cz].minCx, cx), maxCx = math.max(rowRanges[cz].maxCx, cx)}
+        end
+
+        row[cx] = listCell
+    end
+
+    ---@class FrozenSpatialGrid
+    local frozenGrid = {
+        cell_size = cell_size,
+        rows = rows,
+        rowRanges = rowRanges,
+        frozen = true,
+        query = SpatialGrid.queryFrozen
+    }
+    return frozenGrid
+end
+
+---  Generates a unique integer key given cell coordinates
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @param x number X coordinate
+--- @param z number Z coordinate
+--- @return cellKey key The unique cell key
+function SpatialGrid.getCellKey(grid, x, z)
+    local c_x = math.floor(x / grid.cell_size)
+    local c_z = math.floor(z / grid.cell_size)
+    
+    return c_x + (c_z * 1000000)
+end
+
+--- Adds an object to the grid
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @param obj spatialObjectID The object to track (must be valid table key)
+--- @param x number X coordinate
+--- @param z number Z coordinate
+function SpatialGrid.add(grid, obj, x, z)
+    if grid.object_keys[obj] then
+        -- If its already in the grid, update instead
+        return SpatialGrid.update(grid, obj, x, z)
+    end
+
+    local key = SpatialGrid.getCellKey(grid, x, z)
+    local cell = grid.cells[key]
+    if not cell then
+        -- Create new cell if it doesn't exist
+        cell = {}
+        grid.cells[key] = cell
+        grid.stats.cells_used = grid.stats.cells_used + 1
+    end
+    
+    -- Store position for fast distance checks later
+    cell[obj] = {obj=obj, x = x, z = z}
+    grid.object_keys[obj] = key
+    grid.stats.count = grid.stats.count + 1
+end
+
+--- Removes an object from the grid
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @param obj spatialObjectID The object to remove
+function SpatialGrid.remove(grid, obj)
+    local key = grid.object_keys[obj]
+    if key then
+        local cell = grid.cells[key]
+        if cell then
+            cell[obj] = nil
+        end
+        grid.object_keys[obj] = nil
+        grid.stats.count = grid.stats.count - 1
+    end
+end
+
+--- Updates an object's position in the grid
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @param obj spatialObjectID The object to update
+--- @param x number Objects X coordinate
+--- @param z number Objects Z coordinate
+function SpatialGrid.update(grid, obj, x, z)
+    local old_key = grid.object_keys[obj]
+    local new_key = SpatialGrid.getCellKey(grid, x, z)
+
+    if not old_key then
+        -- Object not in grid yet, add it
+        return SpatialGrid.add(grid, obj, x, z)
+    end
+
+    -- Check if the object has moved to a new cell
+    if old_key ~= new_key then
+        -- Remove from the old cell
+        if old_key then
+            local old_cell = grid.cells[old_key]
+            if old_cell then old_cell[obj] = nil end
+        end
+        
+        -- Get the new cell. Create it if it doesn't exist
+        local new_cell = grid.cells[new_key]
+        if not new_cell then
+            new_cell = {}
+            grid.cells[new_key] = new_cell
+            grid.stats.cells_used = grid.stats.cells_used + 1
+        end
+        
+        -- Add to new cell
+        new_cell[obj] = {obj=obj, x = x, z = z}
+        grid.object_keys[obj] = new_key
+    else
+        -- Same cell, just update position data
+        local cell = grid.cells[old_key]
+        cell[obj].x = x
+        cell[obj].z = z
+    end
+end
+
+--- Checks if an object is in the grid already
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @param obj spatialObjectID The object to check
+--- @return boolean inGrid True if the object is in the grid, false otherwise
+function SpatialGrid.isObjectInGrid(grid, obj)
+    return grid.object_keys[obj] ~= nil
+end
+
+--- Sets all empty cells to nil to reduce memory usage if needed
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @return integer totalCleaned The total amount of cells cleaned
+function SpatialGrid.clean(grid)
+    local totalCleaned = 0
+
+    for cellKey, cellContents in pairs(grid.cells) do
+        if next(cellContents) == nil then
+            grid.cells[cellKey] = nil
+            totalCleaned = totalCleaned + 1
+        end
+    end
+    grid.stats.cells_used = math.max(0, grid.stats.cells_used - totalCleaned)
+    
+    return totalCleaned
+end
+
+--- Queries the grid for objects within a radius
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @param x number Center X
+--- @param z number Center Z
+--- @param radius number Radius to search
+--- @return spatialObjectID[] Found of objects found
+function SpatialGrid.query(grid, x, z, radius)
+    local result = {}
+    local result_count = 1
+    local cell_size = grid.cell_size
+    
+    -- Calculate bounds of the cells to check
+    local min_x = math.floor((x - radius) / cell_size)
+    local max_x = math.floor((x + radius) / cell_size)
+    local min_z = math.floor((z - radius) / cell_size)
+    local max_z = math.floor((z + radius) / cell_size)
+    
+    local r_sq = radius * radius
+    
+    -- Iterate the cells
+    for cz = min_z, max_z do
+        local z_offset = cz * 1000000
+        for cx = min_x, max_x do
+            local cell = grid.cells[cx + z_offset]
+            
+            if cell then
+                for obj, pos in pairs(cell) do
+                    -- Check exact distance of each item
+                    local dx = x - pos.x
+                    local dz = z - pos.z
+                    if (dx*dx + dz*dz) <= r_sq then
+                        result[result_count] = obj
+                        result_count = result_count + 1
+                    end
+                end
+            end
+        end
+    end
+    
+    return result
+end
+
+--- Queries the grid for objects within a radius. Instead of looking up cell keys, this uses rows/columns
+--- to only check cells which exist.
+--- @param grid FrozenSpatialGrid The grid created using SpatialGrid.new()
+--- @param x number Center X
+--- @param z number Center Z
+--- @param radius number Radius to search
+--- @return spatialObjectID[] Found of objects found
+function SpatialGrid.queryFrozen(grid, x, z, radius)
+    local result = {}
+    local result_count = 1
+    local cell_size = grid.cell_size
+    local rows = grid.rows
+    local rowRanges = grid.rowRanges
+    
+    -- Calculate bounds of the cells to check
+    local min_x = math.floor((x - radius) / cell_size)
+    local max_x = math.floor((x + radius) / cell_size)
+    local min_z = math.floor((z - radius) / cell_size)
+    local max_z = math.floor((z + radius) / cell_size)
+    
+    local r_sq = radius * radius
+    
+    -- Iterate the cells
+    for cz = min_z, max_z do
+        local rowRange = rowRanges[cz]
+        if rowRange then
+            -- Skip if its cx range doesn't intersect with the query range
+            if rowRange.maxCx < min_x or rowRange.minCx > max_x then
+                goto skipRow
+            end
+
+            -- Loop through every cell in the row which is within the query range
+            local row = rows[cz]
+            for cx, cell in pairs(row) do
+                if cx >= min_x and cx <= max_x then
+                    for i=1, #cell do
+                        local obj_data = cell[i]
+                        local dx = x - obj_data.x
+                        local dz = z - obj_data.z
+                        if (dx * dx + dz * dz) <= r_sq then
+                            result[result_count] = obj_data.obj
+                            result_count = result_count + 1
+                        end
+                    end
+                end
+            end
+            ::skipRow::
+        end
+    end
+    
+    return result
+end
+
+-- library name
+IslandRegistry = {}
+
+
+--[[
+
+
+	Classes
+
+
+]]
+
+---@class IslandRegistryData
+---@field by_index table<integer, ISLAND>
+---@field by_group_id table<integer, ISLAND>
+---@field by_name table<string, ISLAND>
+---@field by_faction table<FACTION, table<integer, ISLAND>>
+---@field by_land_access table<string, table<integer, ISLAND>>
+
+--[[
+
+
+	Constants
+
+
+]]
+
+--[[
+
+
+	Variables
+
+
+]]
+
+--- @type IslandRegistryData
+IslandRegistry.data = {
+	by_index = {},
+	by_group_id = {},
+	by_name = {},
+	by_faction = {},
+	by_land_access = {}
+}
+
+--- @type boolean If the registry has been built
+IslandRegistry.ready = false
+
+--[[
+
+
+	Functions
+
+
+]]
+
+--- Registers the island in the registry, allowing it to be looked by its index, flag vehicle group id, name, and faction.
+--- Also adds the island to the island spatial grid for spatial queries involving islands.
+--- @param island ISLAND
+function IslandRegistry.registerIsland(island)
+	if not island then
+		return
+	end
+
+	IslandRegistry.data.by_index[island.index] = island
+
+	if island.flag_vehicle and island.flag_vehicle.group_id then
+		IslandRegistry.data.by_group_id[island.flag_vehicle.group_id] = island
+	end
+
+	IslandRegistry.data.by_name[string.friendly(island.name or "")] = island
+
+	IslandRegistry.data.by_faction[island.faction] = IslandRegistry.data.by_faction[island.faction] or {}
+	IslandRegistry.data.by_faction[island.faction][island.index] = island
+
+	local land_access = Tags.getValue(island.tags, "land_access", true) or "none"
+	IslandRegistry.data.by_land_access[land_access] = IslandRegistry.data.by_land_access[land_access] or {}
+	IslandRegistry.data.by_land_access[land_access][island.index] = island
+
+	-- Also register it in the spatial hash grid
+	if not island_grid.frozen then
+		---@diagnostic disable-next-line: param-type-mismatch
+		SpatialGrid.add(island_grid, island.index, island.transform[13], island.transform[15])
+	else
+		d.print("(IslandRegistry.registerIsland) island_grid is frozen!", true, 1)
+	end
+end
+
+--- Changes a islands faction
+--- @param island ISLAND
+--- @param new_faction FACTION
+function IslandRegistry.setFaction(island, new_faction)
+	if not island then
+		return
+	end
+
+	if island.faction == new_faction then
+		return
+	end
+
+	if IslandRegistry.data.by_faction[island.faction] then
+		IslandRegistry.data.by_faction[island.faction][island.index] = nil
+	end
+
+	island.faction = new_faction
+
+	IslandRegistry.data.by_faction[new_faction] = IslandRegistry.data.by_faction[new_faction] or {}
+	IslandRegistry.data.by_faction[new_faction][island.index] = island
+end
+
+--- Rebuilds the entire registry from the island data in g_savedata
+function IslandRegistry.rebuild()
+	start_time = s.getTimeMillisec()
+	IslandRegistry.data = {
+		by_index = {},
+		by_group_id = {},
+		by_name = {},
+		by_faction = {},
+		by_land_access = {}
+	}
+	island_grid = SpatialGrid.new(island_grid.cell_size) -- Reset the grid
+
+	if g_savedata.ai_base_island then
+		IslandRegistry.registerIsland(g_savedata.ai_base_island)
+	end
+
+	if g_savedata.player_base_island then
+		IslandRegistry.registerIsland(g_savedata.player_base_island)
+	end
+
+	for _, island in pairs(g_savedata.islands or {}) do
+		IslandRegistry.registerIsland(island)
+	end
+
+	island_grid = island_grid:freeze()
+
+	IslandRegistry.ready = true
+end
+
+--- If the registry hasn't been built yet, builds it. Otherwise does nothing
+function IslandRegistry.ensureReady()
+	if not IslandRegistry.ready then
+		IslandRegistry.rebuild()
+	end
+end
+
+--- @param group_id integer
+--- @return ISLAND|nil island
+function IslandRegistry.getByGroupID(group_id)
+	IslandRegistry.ensureReady()
+	return IslandRegistry.data.by_group_id[group_id]
+end
+
+--- @param island_index integer
+--- @return ISLAND|nil island
+function IslandRegistry.getByIndex(island_index)
+	IslandRegistry.ensureReady()
+	return IslandRegistry.data.by_index[island_index]
+end
+
+--- @param island_name string
+--- @return ISLAND|nil island
+function IslandRegistry.getByName(island_name)
+	IslandRegistry.ensureReady()
+	return IslandRegistry.data.by_name[string.friendly(island_name or "")]
+end
+
+--- Returns a table of all islands controlled by a faction
+--- Note: this returns a reference to the actual data. If you need to modify it, make a copy first
+--- @param faction FACTION
+--- @return table<integer, ISLAND>
+function IslandRegistry.getFactionMap(faction)
+	IslandRegistry.ensureReady()
+	return IslandRegistry.data.by_faction[faction] or {}
+end
+
+--- Returns a table of all islands with the specified land access
+--- Note: this returns a reference to the actual data. If you need to modify it, make a copy first
+--- @param land_access string
+--- @return table<integer, ISLAND>
+function IslandRegistry.getLandAccessMap(land_access)
+	IslandRegistry.ensureReady()
+	return IslandRegistry.data.by_land_access[land_access] or {}
+end
+
 
 -- library name
 Island = {}
@@ -6258,14 +6785,101 @@ Island = {}
 -- shortened library name
 is = Island
 
---- @alias ANY_ISLAND ISLAND|AI_ISLAND|PLAYER_ISLAND
+---@class IslandZones
+---@field turrets table
+---@field land table
+---@field sea table
 
--- checks if this island can spawn the specified vehicle
+---@class IslandCargo
+---@field oil number
+---@field jet_fuel number
+---@field diesel number
+
+---@class ISLAND
+---@field name string
+---@field index integer 
+---@field flag_vehicle SWAddonComponentSpawned The flag vehicle spawned on the island
+---@field transform SWMatrix The transform of the islands zone
+---@field tags table<number, string>
+---@field faction FACTION
+---@field is_contested boolean
+---@field capture_timer number
+---@field ui_id SWUI_ID
+---@field assigned_squad_index integer
+---@field zones IslandZones
+---@field payroll_multiplier number
+---@field ai_capturing integer
+---@field players_capturing integer
+---@field defenders integer
+---@field is_scouting boolean
+---@field last_defended number
+---@field cargo IslandCargo
+---@field cargo_transfer IslandCargo
+---@field object_type "island"
+---@field production_timer number?
+
+---@class AI_ISLAND: ISLAND
+---@field production_timer number
+
+---@class PLAYER_ISLAND: ISLAND
+
+--- Creates a island class
+---	@param island_data SWZone
+---	@param island_index integer
+---	@param faction FACTION
+---	@param flag SWAddonComponentSpawned
+---	@param capture_timer number
+---	@param cargo_data table
+---	@param production_timer number?
+---	@return ISLAND island
+function Island.createIslandData(island_data, island_index, faction, flag, capture_timer, cargo_data, production_timer)
+	local island = {
+		name = island_data.name,
+		index = island_index,
+		flag_vehicle = flag,
+		transform = island_data.transform,
+		tags = island_data.tags,
+		faction = faction,
+		is_contested = false,
+		capture_timer = capture_timer,
+		ui_id = server.getMapID() --[[@as SWUI_ID]],
+		assigned_squad_index = -1,
+		zones = {
+			turrets = {},
+			land = {},
+			sea = {}
+		},
+		payroll_multiplier = Tags.getValue(island_data.tags, "payroll_multiplier", false) or 1,
+		ai_capturing = 0,
+		players_capturing = 0,
+		defenders = 0,
+		is_scouting = false,
+		last_defended = 0,
+		cargo = {
+			oil = cargo_data.oil,
+			jet_fuel = cargo_data.jet_fuel,
+			diesel = cargo_data.diesel
+		},
+		cargo_transfer = {
+			oil = 0,
+			jet_fuel = 0,
+			diesel = 0
+		},
+		object_type = "island"
+	}
+
+	if production_timer ~= nil then
+		island.production_timer = production_timer
+	end
+
+	return island
+end
+
+---Checks if this island can spawn the specified vehicle
 ---@param island ISLAND the island you want to check if AI can spawn there
 ---@param selected_prefab PREFAB_DATA the selected_prefab you want to check with the island
 ---@return boolean can_spawn if the AI can spawn there
-function Island.canSpawn(island, selected_prefab)
-
+function Island.canSpawnPrefab(island, selected_prefab)
 	-- if this island is owned by the AI
 	if island.faction ~= ISLAND.FACTION.AI then
 		return false
@@ -6307,7 +6921,8 @@ function Island.canSpawn(island, selected_prefab)
 		end
 	else
 		-- this island can spawn this specific vehicle
-		if not Tags.has(island.tags, "can_spawn="..string.gsub(Tags.getValue(selected_prefab.vehicle.tags, "vehicle_type", true), "wep_", "")) and not Tags.has(selected_prefab.vehicle.tags, "role=scout") then -- if it can spawn at the island
+		local vehicle_type = Tags.getValue(selected_prefab.vehicle.tags, "vehicle_type", true) or ""
+		if not Tags.has(island.tags, "can_spawn="..string.gsub(vehicle_type, "wep_", "")) and not Tags.has(selected_prefab.vehicle.tags, "role=scout") then
 			return false
 		end
 	end
@@ -6320,29 +6935,22 @@ function Island.canSpawn(island, selected_prefab)
 	return true
 end
 
---# returns the island data from the provided flag vehicle id (warning: if you modify the returned data, it will not apply anywhere else, and will be local to that area.)
+---Returns the island data from the provided flag vehicle id (warning: if you modify the returned data, it will not apply anywhere else, and will be local to that area.)
 ---@param group_id integer the group_id of the island's flag vehicle
----@return ISLAND|AI_ISLAND|PLAYER_ISLAND|nil island the island the flag vehicle belongs to
+---@return ISLAND? island the island the flag vehicle belongs to
 ---@return boolean got_island if the island was gotten
 function Island.getDataFromGroupID(group_id)
-	if g_savedata.ai_base_island.flag_vehicle.group_id == group_id then
-		return g_savedata.ai_base_island, true
-	elseif g_savedata.player_base_island.flag_vehicle.group_id == group_id then
-		return g_savedata.player_base_island, true
-	else
-		for _, island in pairs(g_savedata.islands) do
-			if island.flag_vehicle.group_id == group_id then
-				return island, true
-			end
-		end
+	local island = IslandRegistry.getByGroupID(group_id)
+	if island then
+		return island, true
 	end
 
 	return nil, false
 end
 
---# returns the island data from the provided island index (warning: if you modify the returned data, it will not apply anywhere else, and will be local to that area.)
+---returns the island data from the provided island index (warning: if you modify the returned data, it will not apply anywhere else, and will be local to that area.)
 ---@param island_index integer the island index you want to get
----@return ANY_ISLAND island the island data from the index
+---@return ISLAND? island the island data from the index
 ---@return boolean island_found returns true if the island was found
 function Island.getDataFromIndex(island_index)
 	if not island_index then -- if the island_index wasn't specified
@@ -6350,15 +6958,9 @@ function Island.getDataFromIndex(island_index)
 		return nil, false
 	end
 
-	if g_savedata.islands[island_index] then
-		-- if its a normal island
-		return g_savedata.islands[island_index], true
-	elseif island_index == g_savedata.ai_base_island.index then
-		-- if its the ai's main base
-		return g_savedata.ai_base_island, true
-	elseif island_index == g_savedata.player_base_island.index then
-		-- if its the player's main base
-		return g_savedata.player_base_island, true 
+	local island = IslandRegistry.getByIndex(island_index)
+	if island then
+		return island, true
 	end
 
 	d.print("(Island.getDataFromIndex) island was not found! inputted island_index: "..tostring(island_index), true, 1)
@@ -6366,29 +6968,17 @@ function Island.getDataFromIndex(island_index)
 	return nil, false
 end
 
---# returns the island data from the provided island name (warning: if you modify the returned data, it will not apply anywhere else, and will be local to that area.)
+---returns the island data from the provided island name (warning: if you modify the returned data, it will not apply anywhere else, and will be local to that area.)
 ---@param island_name string the island name you want to get
----@return ISLAND island the island data from the name
+---@return ISLAND? island the island data from the name
 ---@return boolean island_found returns true if the island was found
 function Island.getDataFromName(island_name) -- function that gets the island by its name, it doesnt care about capitalisation and will replace underscores with spaces automatically
 	if island_name then
-		island_name = string.friendly(island_name)
-		if island_name == string.friendly(g_savedata.ai_base_island.name) then
-			-- if its the ai's main base
-			return g_savedata.ai_base_island, true
-		elseif island_name == string.friendly(g_savedata.player_base_island.name) then
-			-- if its the player's main base
-			return g_savedata.player_base_island, true
-		else
-			-- check all other islands
-			for _, island in pairs(g_savedata.islands) do
-				if island_name == string.friendly(island.name) then
-					return island, true
-				end
-			end
+		local island_name = string.friendly(island_name) or ""
+		local island = IslandRegistry.getByName(island_name)
+		if island then
+			return island, true
 		end
-	else
-		return nil, false
 	end
 	return nil, false
 end
@@ -6401,22 +6991,18 @@ Command.registerCommand(
 	---@param arg table the arguments of the command.
 	function(full_message, peer_id, arg)
 		if arg[1] and arg[2] then
-			local is_island = false
-			for island_index, island in pairs(g_savedata.islands) do
-				if island.name == string.gsub(arg[1], "_", " ") then
-					is_island = true
-					if island.faction ~= arg[2] then
-						if arg[2] == ISLAND.FACTION.AI or arg[2] == ISLAND.FACTION.NEUTRAL or arg[2] == ISLAND.FACTION.PLAYER then
-							captureIsland(island, arg[2], peer_id)
-						else
-							d.print(arg[2].." is not a valid faction! valid factions: | ai | neutral | player", false, 1, peer_id)
-						end
+			local island, island_found = Island.getDataFromName(string.gsub(arg[1], "_", " "))
+			if island_found and island then
+				if island.faction ~= arg[2] then
+					if arg[2] == ISLAND.FACTION.AI or arg[2] == ISLAND.FACTION.NEUTRAL or arg[2] == ISLAND.FACTION.PLAYER then
+						captureIsland(island, arg[2], peer_id)
 					else
-						d.print(island.name.." is already set to "..island.faction..".", false, 1, peer_id)
+						d.print(arg[2].." is not a valid faction! valid factions: | ai | neutral | player", false, 1, peer_id)
 					end
+				else
+					d.print(island.name.." is already set to "..island.faction..".", false, 1, peer_id)
 				end
-			end
-			if not is_island then
+			else
 				d.print(arg[1].." is not a valid island! Did you replace spaces with _?", false, 1, peer_id)
 			end
 		else
@@ -6637,6 +7223,7 @@ function Setup.createVehiclePrefabs()
 
 				-- check if this is the flag
 				if not flag_prefab and Tags.has(component_data.tags, "type=dlc_weapons_flag") and component_data.type == "vehicle" then
+					---@class FLAG_PREFAB
 					flag_prefab = { 
 						addon_index = addon_index,
 						location_index = location_index,
@@ -8707,240 +9294,11 @@ function safe_server.getVehicleComponents(vehicle_id)
 
 	return loaded_vehicle_data, is_success
 end
- -- safer functions for the server functions. -- functions for script/world setup.
---[[
-spatialGrid.lua
-
-Uses Spatial Hashing to add objects to buckets on a 2d grid
-Allows for fast lookup of nearby objects by only checking the buckets near the query point instead of every object in the world
-]]
-
-
---[[
-
-
-    Library Setup
-
-
-]]
-
--- required libraries
-
-SpatialGrid = {}
-
---[[
-
-
-	Variables
-   
-
-]]
-
---[[
-
-
-	Classes
-
-
-]]
-
----@alias spatialObjectID number A unique identifier for an object in the spatial grid. (For example a vehicle ID)
-
----@alias cellKey any
----@alias cellContents table<spatialObjectID, {obj: spatialObjectID, x: number, z: number}>
-
----@class SpatialGrid
----@field cell_size number The size of each grid cell
----@field cells table<cellKey, cellContents> The grid cells
----@field object_keys table<spatialObjectID, cellKey>
----@field stats {count: number, cells_used: number}
-
---[[
-
-
-	Functions         
-
-
-]]
-
---- Creates a new spatial grid
---- @param cell_size number The size of each grid cell. Should be roughly the size of your typical query radius.
---- @return SpatialGrid grid The new spatial grid
-function SpatialGrid.new(cell_size)
-    ---@type SpatialGrid
-    return {
-        cell_size = cell_size or 500,
-        cells = {},
-        object_keys = {},
-        stats = {count = 0, cells_used = 0}
-    }
-end
-
----  Generates a unique integer key given cell coordinates
---- @param grid SpatialGrid The grid created using SpatialGrid.new()
---- @param x number X coordinate
---- @param z number Z coordinate
---- @return cellKey key The unique cell key
-function SpatialGrid.getCellKey(grid, x, z)
-    local c_x = math.floor(x / grid.cell_size)
-    local c_z = math.floor(z / grid.cell_size)
-    
-    return c_x + (c_z * 1000000)
-end
-
---- Adds an object to the grid
---- @param grid SpatialGrid The grid created using SpatialGrid.new()
---- @param obj spatialObjectID The object to track (must be valid table key)
---- @param x number X coordinate
---- @param z number Z coordinate
-function SpatialGrid.add(grid, obj, x, z)
-    if grid.object_keys[obj] then
-        -- If its already in the grid, update instead
-        return SpatialGrid.update(grid, obj, x, z)
-    end
-
-    local key = SpatialGrid.getCellKey(grid, x, z)
-    local cell = grid.cells[key]
-    if not cell then
-        -- Create new cell if it doesn't exist
-        cell = {}
-        grid.cells[key] = cell
-        grid.stats.cells_used = grid.stats.cells_used + 1
-    end
-    
-    -- Store position for fast distance checks later
-    cell[obj] = {obj=obj, x = x, z = z}
-    grid.object_keys[obj] = key
-    grid.stats.count = grid.stats.count + 1
-end
-
---- Removes an object from the grid
---- @param grid SpatialGrid The grid created using SpatialGrid.new()
---- @param obj spatialObjectID The object to remove
-function SpatialGrid.remove(grid, obj)
-    local key = grid.object_keys[obj]
-    if key then
-        local cell = grid.cells[key]
-        if cell then
-            cell[obj] = nil
-        end
-        grid.object_keys[obj] = nil
-        grid.stats.count = grid.stats.count - 1
-    end
-end
-
---- Updates an object's position in the grid
---- @param grid SpatialGrid The grid created using SpatialGrid.new()
---- @param obj spatialObjectID The object to update
---- @param x number Objects X coordinate
---- @param z number Objects Z coordinate
-function SpatialGrid.update(grid, obj, x, z)
-    local old_key = grid.object_keys[obj]
-    local new_key = SpatialGrid.getCellKey(grid, x, z)
-
-    if not old_key then
-        -- Object not in grid yet, add it
-        return SpatialGrid.add(grid, obj, x, z)
-    end
-
-    -- Check if the object has moved to a new cell
-    if old_key ~= new_key then
-        -- Remove from the old cell
-        if old_key then
-            local old_cell = grid.cells[old_key]
-            if old_cell then old_cell[obj] = nil end
-        end
-        
-        -- Get the new cell. Create it if it doesn't exist
-        local new_cell = grid.cells[new_key]
-        if not new_cell then
-            new_cell = {}
-            grid.cells[new_key] = new_cell
-            grid.stats.cells_used = grid.stats.cells_used + 1
-        end
-        
-        -- Add to new cell
-        new_cell[obj] = {obj=obj, x = x, z = z}
-        grid.object_keys[obj] = new_key
-    else
-        -- Same cell, just update position data
-        local cell = grid.cells[old_key]
-        cell[obj].x = x
-        cell[obj].z = z
-    end
-end
-
---- Checks if an object is in the grid already
---- @param grid SpatialGrid The grid created using SpatialGrid.new()
---- @param obj spatialObjectID The object to check
---- @return boolean inGrid True if the object is in the grid, false otherwise
-function SpatialGrid.isObjectInGrid(grid, obj)
-    return grid.object_keys[obj] ~= nil
-end
-
---- Sets all empty cells to nil to reduce memory usage if needed
---- @param grid SpatialGrid The grid created using SpatialGrid.new()
---- @return integer totalCleaned The total amount of cells cleaned
-function SpatialGrid.clean(grid)
-    local totalCleaned = 0
-
-    for cellKey, cellContents in pairs(grid.cells) do
-        if next(cellContents) == nil then
-            grid.cells[cellKey] = nil
-            totalCleaned = totalCleaned + 1
-        end
-    end
-    grid.stats.cells_used = math.max(0, grid.stats.cells_used - totalCleaned)
-    
-    return totalCleaned
-end
-
---- Queries the grid for objects within a radius
---- @param grid SpatialGrid The grid created using SpatialGrid.new()
---- @param x number Center X
---- @param z number Center Z
---- @param radius number Radius to search
---- @return spatialObjectID[] Found of objects found
-function SpatialGrid.query(grid, x, z, radius)
-    local result = {}
-    local result_count = 1
-    local cell_size = grid.cell_size
-    
-    -- Calculate bounds of the cells to check
-    local min_x = math.floor((x - radius) / cell_size)
-    local max_x = math.floor((x + radius) / cell_size)
-    local min_z = math.floor((z - radius) / cell_size)
-    local max_z = math.floor((z + radius) / cell_size)
-    
-    local r_sq = radius * radius
-    
-    -- Iterate the cells
-    for cz = min_z, max_z do
-        local z_offset = cz * 1000000
-        for cx = min_x, max_x do
-            local key = cx + z_offset
-            local cell = grid.cells[key]
-            
-            if cell then
-                for obj, pos in pairs(cell) do
-                    -- Check exact distance of each item
-                    local dx = x - pos.x
-                    local dz = z - pos.z
-                    if (dx*dx + dz*dz) <= r_sq then
-                        result[result_count] = obj
-                        result_count = result_count + 1
-                    end
-                end
-            end
-        end
-    end
-    
-    return result
-end
- -- spatial grid functions
+ -- safer functions for the server functions. -- functions for script/world setup. -- spatial grid functions
 
 ai_vehicles_grid = SpatialGrid.new(1000)
 player_vehicles_grid = SpatialGrid.new(1000)
+island_grid = SpatialGrid.new(4000):freeze()
  -- spatial grid definitions -- functions relating to their AI
 --[[
 
@@ -9145,227 +9503,6 @@ function Characters.createAndSetCharactersIntoSeat(vehicle_id, valid_seats)
 end
  -- functions for characters, such as setting them into seats.
 --[[
-	
-Copyright 2024 Liam Matthews
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-	http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-]]
-
-CapturePointPayments = {}
-
-local payroll_oversleeping_messages = {
-	"I'm not paying for your sleeping expenses!",
-	"Never heard of using sleeping as a defence before. Neither will your payroll.",
-	"The beds are there to fill either patients or the enemies with, not yourself.",
-	"Why save lives when you can sleep more than 12 hours a day? To get your payroll, of course."
-}
-
-local payroll_payout_messages = {
-	"Great job holding the points, I've sent your payroll of $${payout}.",
-	"Good work, your payroll of $${payout} has been sent.",
-	"Keep up the good work, I've sent you $${payout} for your efforts."
-}
-
----@param game_ticks number the game_ticks given by onTick()
-function CapturePointPayments.tick(game_ticks)
-	if not g_savedata.settings.CAPTURE_POINT_PAYMENTS then
-		return
-	end
-
-	CapturePointPayments.incrementSleepTracker(game_ticks)
-
-	local current_date = CapturePointPayments.getDate()
-
-	-- check if its time to do the payroll
-	if current_date - g_savedata.libraries.capture_point_payments.last_payout >= g_savedata.flags.capture_point_payroll_frequency then
-		
-		if CapturePointPayments.getSleepRatio() < g_savedata.flags.capture_point_payroll_sleep_ratio_max then
-			server.notify(-1, "Capture Point Payroll", payroll_oversleeping_messages[math.random(1, #payroll_oversleeping_messages)], 7)
-
-			-- reset the sleep tracker for the new week
-			CapturePointPayments.resetSleepTracker()
-
-			return
-		end
-
-		local payroll_per_island = g_savedata.flags.capture_point_payroll_amount
-
-		-- the player always holds their main base, so give them that amount.
-		local pay_amount = payroll_per_island * g_savedata.player_base_island.payroll_multiplier
-
-		for _, capture_point in pairs(g_savedata.islands) do
-			if capture_point.faction == ISLAND.FACTION.PLAYER then
-				pay_amount = pay_amount + payroll_per_island * capture_point.payroll_multiplier
-			end
-		end
-
-		local player_currency = server.getCurrency()
-		local player_research = server.getResearchPoints()
-
-		server.setCurrency(player_currency + pay_amount, player_research)
-
-		local payout_message = payroll_payout_messages[math.random(1, #payroll_payout_messages)]
-
-		payout_message = payout_message:gsub("${payout}", pay_amount)
-
-		server.notify(-1, "Capture Point Payroll", payout_message, 4)
-
-		-- reset the sleep tracker for the new week
-		CapturePointPayments.resetSleepTracker()
-	end
-end
-
--- increments the sleep tracker.
----@param game_ticks number the game_ticks given by onTick(), 1 means the player is not sleeping, 400 means the player is sleeping.
-function CapturePointPayments.incrementSleepTracker(game_ticks)
-	-- increment the number of this tick (game_ticks 400 is sleeping, game_ticks 1 is normal)
-
-	local sleep_tracker = g_savedata.libraries.capture_point_payments.sleep_tracker
-
-	if game_ticks == 1 then
-		sleep_tracker.normal = sleep_tracker.normal + 1
-	end
-
-	sleep_tracker.total = sleep_tracker.total + game_ticks
-end
-
--- gets the current date, along with the % of the current day
----@return number current_date the current day plus the current day percentage.
-function CapturePointPayments.getDate()
-	local time_data = server.getTime()
-
-	local total_days = server.getDateValue()
-
-	return total_days + time_data.percent
-end
-
--- resets the sleep tracker
-function CapturePointPayments.resetSleepTracker()
-	g_savedata.libraries.capture_point_payments.sleep_tracker = {
-		normal = 0,
-		total = 0
-	}
-
-	g_savedata.libraries.capture_point_payments.last_payout = server.getDateValue() + g_savedata.flags.capture_point_payroll_time
-end
-
--- Gets the sleep ratio
----@return number sleep_ratio value of 0-1, if the player has consantly been sleeping, the value will be 0, if the player has never slept, then the value will be 1.
-function CapturePointPayments.getSleepRatio()
-	local sleep_tracker = g_savedata.libraries.capture_point_payments.sleep_tracker
-
-	return sleep_tracker.normal/sleep_tracker.total
-end
-
---[[
-
-
-Flag Registers
-
-
-]]
-
---[[
-Number Flags
-]]
-
---[[
-	capture_point_payroll_frequency flag,
-	controls the frequency of which you get a payroll for how many capture points you hold in days.
-]]
-Flag.registerNumberFlag(
-	"capture_point_payroll_frequency",
-	7,
-	{
-		"balance",
-		"capture points",
-		"payroll",
-		"no performance impact"
-	},
-	"normal",
-	"admin",
-	nil,
-	"Controls the frequency of which you get a payroll for how many capture points you hold in days.",
-	nil,
-	nil
-)
-
---[[
-	capture_point_payroll_frequency flag,
-	controls how much money you get per capture point you hold.
-]]
-Flag.registerNumberFlag(
-	"capture_point_payroll_amount",
-	700,
-	{
-		"balance",
-		"capture points",
-		"payroll",
-		"no performance impact"
-	},
-	"normal",
-	"admin",
-	nil,
-	"Controls how much money you get per capture point you hold.",
-	0,
-	nil
-)
-
---[[ 
-	capture_point_payroll_frequency flag,
-	controls at which time of the day you will recieve the payment, 
-	may have strange behaviour when the payroll frequency is less than 1.
-]]
-Flag.registerNumberFlag(
-	"capture_point_payroll_time",
-	0.2916666667,
-	{
-		"balance",
-		"capture points",
-		"payroll",
-		"no performance impact"
-	},
-	"normal",
-	"admin",
-	nil,
-	"Controls at which time of the day you will recieve the payment, may have strange behaviour when the payroll frequency is less than 1.",
-	0,
-	1
-)
-
---[[
-	capture_point_payroll_sleep_ratio_max flag,
-	controls the minimum amount of time you must've spent not asleep for you to get the payroll.
-]]
-Flag.registerNumberFlag(
-	"capture_point_payroll_sleep_ratio_max",
-	0.3,
-	{
-		"balance",
-		"capture points",
-		"payroll",
-		"no performance impact"
-	},
-	"normal",
-	"admin",
-	nil,
-	"Controls the minimum amount of time you must've spent not asleep for you to get the payroll.",
-	0,
-	1
-)
- -- controls the payroll system for how many islands you hold.
---[[
 
 
 	Library Setup
@@ -9524,7 +9661,7 @@ Squad = {}
 ---@field vehicle_type VEHICLE_TYPE the vehicle type this squadron is made up of
 ---@field role string the role this squadron has
 ---@field vehicles table<integer, vehicle_object> the vehicles in this squadron
----@field target_island AI_ISLAND|PLAYER_ISLAND|ISLAND|nil the island this squadron is targetting
+---@field target_island ISLAND? the island this squadron is targetting
 ---@field target_vehicles table<integer, TargetVehicle>|nil the vehicles this squadron is targetting
 ---@field target_players table<integer, TargetPlayer>|nil the players this squadron is targetting
 ---@field investigate_transform SWMatrix|nil the transform this squadron is investigating *(only set when command is INVESTIGATE)*
@@ -9775,7 +9912,7 @@ end
 --- @param command SQUAD_COMMAND
 --- @vararg nil
 --- @return boolean success if the command was successfully set. If false, then either the parameters are invalid or theres a restriction blocking it
---- @overload fun(squad:squadron, command:"attack"|"stage"|"defend"|"patrol", target_island: ANY_ISLAND):boolean
+--- @overload fun(squad:squadron, command:"attack"|"stage"|"defend"|"patrol", target_island: ISLAND):boolean
 --- @overload fun(squad:squadron, command:"investigate", investigate_transform: SWMatrix):boolean
 function Squad.setCommand(squad, command, ...)
 	-- Input validation
@@ -9843,7 +9980,7 @@ end
 
 --- Returns whether or not the squad can access a given island
 --- @param squad squadron the squad to check
---- @param island AI_ISLAND|PLAYER_ISLAND|ISLAND the island to check
+--- @param island ISLAND the island to check
 --- @return boolean can_access whether or not the squad can access the island
 --- @return boolean is_success whether or not the function executed successfully
 function Squad.canAccessIsland(squad, island)
@@ -10415,7 +10552,7 @@ end
 ---@param requested_prefab string|integer|nil vehicle name or vehicle role, such as scout, will try to spawn that vehicle or type
 ---@param vehicle_type string? the vehicle type you want to spawn, such as boat, leave nil to ignore
 ---@param force_spawn boolean? if you want to force it to spawn, it will spawn at the ai's main base
----@param specified_island ISLAND|AI_ISLAND? the island you want it to spawn at
+---@param specified_island ISLAND? the island you want it to spawn at
 ---@param purchase_type integer? 0 for dont buy, 1 for free (cost will be 0 no matter what), 2 for free but it has lower stats, 3 for spend as much as you can but the less spent will result in lower stats. 
 ---@return boolean spawned_vehicle if the vehicle successfully spawned or not
 ---@return vehicle_object|string vehicle_object the vehicle's data if the the vehicle successfully spawned, otherwise its returns the error code
@@ -10566,7 +10703,7 @@ function Vehicle.spawn(requested_prefab, vehicle_type, force_spawn, specified_is
 				return false, "no islands to attack! cancelling spawning of attack vehicle"
 			end
 			for island_index, island in pairs(g_savedata.islands) do
-				if is.canSpawn(island, selected_prefab) and (selected_spawn_transform == nil or m.xzDistance(target.transform, island.transform) < m.xzDistance(target.transform, selected_spawn_transform)) then
+				if Island.canSpawnPrefab(island, selected_prefab) and (selected_spawn_transform == nil or m.xzDistance(target.transform, island.transform) < m.xzDistance(target.transform, selected_spawn_transform)) then
 					selected_spawn_transform = island.transform
 					selected_spawn = island_index
 				end
@@ -10580,7 +10717,7 @@ function Vehicle.spawn(requested_prefab, vehicle_type, force_spawn, specified_is
 			local islands_needing_checked = {}
 
 			for island_index, island in pairs(g_savedata.islands) do
-				if is.canSpawn(island, selected_prefab) then
+				if Island.canSpawnPrefab(island, selected_prefab) then
 					if not lowest_defenders or island.defenders < lowest_defenders then -- choose the island with the least amount of defence (A)
 						lowest_defenders = island.defenders -- set the new lowest defender amount on an island
 						selected_spawn_transform = island.transform
@@ -10626,7 +10763,7 @@ function Vehicle.spawn(requested_prefab, vehicle_type, force_spawn, specified_is
 			local valid_islands = {}
 			local valid_island_index = {}
 			for island_index, island in pairs(g_savedata.islands) do
-				if is.canSpawn(island, selected_prefab) then
+				if Island.canSpawnPrefab(island, selected_prefab) then
 					table.insert(valid_islands, island)
 					table.insert(valid_island_index, island_index)
 				end
@@ -10641,7 +10778,7 @@ function Vehicle.spawn(requested_prefab, vehicle_type, force_spawn, specified_is
 		-- if they specified the island they want it to spawn at
 		if not force_spawn then
 			-- if they did not force the vehicle to spawn
-			if is.canSpawn(specified_island, selected_prefab) then
+			if Island.canSpawnPrefab(specified_island, selected_prefab) then
 				selected_spawn_transform = specified_island.transform
 				selected_spawn = specified_island.index
 			end
@@ -11622,8 +11759,8 @@ function Cargo.setKeypad(vehicle_id, keypad_name, cargo_type)
 	s.setVehicleKeypad(vehicle_id, keypad_name, s_fluid_types[cargo_type])
 end
 
----@param recipient vehicle_object|ISLAND|AI_ISLAND the island or vehicle object thats getting the cargo
----@param sender vehicle_object|ISLAND|AI_ISLAND the island or vehicle object thats sending the cargo
+---@param recipient vehicle_object|ISLAND the island or vehicle object thats getting the cargo
+---@param sender vehicle_object|ISLAND the island or vehicle object thats sending the cargo
 ---@param requested_cargo requestedCargo the cargo thats going between the sender and recipient
 ---@param transfer_time number how long the cargo transfer should take
 ---@param tick_rate number the tick rate
@@ -11816,7 +11953,7 @@ function Cargo.transfer(recipient, sender, requested_cargo, transfer_time, tick_
 	return false, "transfer incomplete"
 end
 
----@param island ISLAND|AI_ISLAND|PLAYER_ISLAND the island you want to produce the cargo at
+---@param island ISLAND the island you want to produce the cargo at
 ---@param natural_production number? the natural production of this island
 function Cargo.produce(island, natural_production)
 
@@ -11868,7 +12005,7 @@ function Cargo.produce(island, natural_production)
 	end
 end
 
----@return ISLAND|AI_ISLAND island the island thats best to resupply
+---@return ISLAND island the island thats best to resupply
 ---@return ICMResupplyWeights weight the weights of all of the cargo types for the resupply island
 function Cargo.getBestResupplyIsland()
 
@@ -11915,7 +12052,7 @@ function Cargo.getBestResupplyIsland()
 end
 
 ---@param resupply_weights ICMResupplyWeights the weights of all of the cargo types for the resupply island
----@return ISLAND|AI_ISLAND island the resupplier island
+---@return ISLAND island the resupplier island
 ---@return ICMResupplyWeights resupplier_weights the weights of all the cargo types for the resupplier island, sorted from most to least weight
 function Cargo.getBestResupplierIsland(resupply_weights)
 
@@ -11966,7 +12103,7 @@ function Cargo.getBestResupplierIsland(resupply_weights)
 	return resupplier_island, resupplier_resource
 end
 
----@param island ANY_ISLAND the island you want to get the resupply weight of
+---@param island ISLAND the island you want to get the resupply weight of
 ---@return ICMResupplyWeights weights the weights of all of the cargo types for the resupply island
 function Cargo.getResupplyWeight(island) -- get the weight of the island (for resupplying the island)
 	-- weight by how much cargo the island has
@@ -11993,7 +12130,7 @@ function Cargo.getResupplyWeight(island) -- get the weight of the island (for re
 	return weight
 end
 
----@param island ANY_ISLAND the island you want to get the resupplier weight of
+---@param island ISLAND the island you want to get the resupplier weight of
 ---@return ICMResupplyWeights weights the weights of all of the cargo types for the resupplier island
 function Cargo.getResupplierWeight(island) -- get weight of the island (for using it to resupply another island)
 	local oil_weight = (island.cargo.oil/(RULES.LOGISTICS.CARGO.ISLANDS.max_capacity*0.9)) -- oil
@@ -12117,8 +12254,8 @@ function Cargo.getRequestedCargo(cargo_weight, vehicle_object)
 	return requested_cargo
 end
 
----@param origin_island ISLAND|AI_ISLAND the island of which the cargo is coming from
----@param dest_island ISLAND|AI_ISLAND the island of which the cargo is going to
+---@param origin_island ISLAND the island of which the cargo is coming from
+---@param dest_island ISLAND the island of which the cargo is going to
 ---@return ICMRouteSegment[] best_route the best route to go from the origin to the destination
 function Cargo.getBestRoute(origin_island, dest_island) -- origin = resupplier island | dest = resupply island
 	local start_time = s.getTimeMillisec()
@@ -12638,11 +12775,10 @@ function Cargo.getTransportVehicle(vehicle_type)
 	return prefabs_data
 end
 
----@param island1 ISLAND|AI_ISLAND|PLAYER_ISLAND the first island you want to get the distance from
----@param island2 ISLAND|AI_ISLAND|PLAYER_ISLAND the second island you want to get the distance to
+---@param island1 ISLAND the first island you want to get the distance from
+---@param island2 ISLAND the second island you want to get the distance to
 ---@return table distance the distance between the first island and the second island | distance.land | distance.sea | distance.air
 function Cargo.getIslandDistance(island1, island2)
-
 	local first_cache_index = island2.index
 	local second_cache_index = island1.index
 
@@ -12918,7 +13054,494 @@ Command.registerCommand(
 	"Prints the best cargo route from the AI base to the given island id",
 	{""}
 )
- -- functions relating to the Convoys and Cargo Vehicles -- functions relating to islands -- functions for the main objectives. -- functions relating to the Adaptive AI -- functions for squads
+ -- functions relating to the Convoys and Cargo Vehicles -- functions for the main objectives. -- functions relating to the Adaptive AI -- functions for squads -- functions relating to islands
+--[[
+	
+Copyright 2024 Liam Matthews
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+]]
+
+CapturePointPayments = {}
+
+local payroll_oversleeping_messages = {
+	"I'm not paying for your sleeping expenses!",
+	"Never heard of using sleeping as a defence before. Neither will your payroll.",
+	"The beds are there to fill either patients or the enemies with, not yourself.",
+	"Why save lives when you can sleep more than 12 hours a day? To get your payroll, of course."
+}
+
+local payroll_payout_messages = {
+	"Great job holding the points, I've sent your payroll of $${payout}.",
+	"Good work, your payroll of $${payout} has been sent.",
+	"Keep up the good work, I've sent you $${payout} for your efforts."
+}
+
+---@param game_ticks number the game_ticks given by onTick()
+function CapturePointPayments.tick(game_ticks)
+	if not g_savedata.settings.CAPTURE_POINT_PAYMENTS then
+		return
+	end
+
+	CapturePointPayments.incrementSleepTracker(game_ticks)
+
+	local current_date = CapturePointPayments.getDate()
+
+	-- check if its time to do the payroll
+	if current_date - g_savedata.libraries.capture_point_payments.last_payout >= g_savedata.flags.capture_point_payroll_frequency then
+		
+		if CapturePointPayments.getSleepRatio() < g_savedata.flags.capture_point_payroll_sleep_ratio_max then
+			server.notify(-1, "Capture Point Payroll", payroll_oversleeping_messages[math.random(1, #payroll_oversleeping_messages)], 7)
+
+			-- reset the sleep tracker for the new week
+			CapturePointPayments.resetSleepTracker()
+
+			return
+		end
+
+		local payroll_per_island = g_savedata.flags.capture_point_payroll_amount
+
+		-- the player always holds their main base, so give them that amount.
+		local pay_amount = payroll_per_island * g_savedata.player_base_island.payroll_multiplier
+
+		for _, capture_point in pairs(g_savedata.islands) do
+			if capture_point.faction == ISLAND.FACTION.PLAYER then
+				pay_amount = pay_amount + payroll_per_island * capture_point.payroll_multiplier
+			end
+		end
+
+		local player_currency = server.getCurrency()
+		local player_research = server.getResearchPoints()
+
+		server.setCurrency(player_currency + pay_amount, player_research)
+
+		local payout_message = payroll_payout_messages[math.random(1, #payroll_payout_messages)]
+
+		payout_message = payout_message:gsub("${payout}", pay_amount)
+
+		server.notify(-1, "Capture Point Payroll", payout_message, 4)
+
+		-- reset the sleep tracker for the new week
+		CapturePointPayments.resetSleepTracker()
+	end
+end
+
+-- increments the sleep tracker.
+---@param game_ticks number the game_ticks given by onTick(), 1 means the player is not sleeping, 400 means the player is sleeping.
+function CapturePointPayments.incrementSleepTracker(game_ticks)
+	-- increment the number of this tick (game_ticks 400 is sleeping, game_ticks 1 is normal)
+
+	local sleep_tracker = g_savedata.libraries.capture_point_payments.sleep_tracker
+
+	if game_ticks == 1 then
+		sleep_tracker.normal = sleep_tracker.normal + 1
+	end
+
+	sleep_tracker.total = sleep_tracker.total + game_ticks
+end
+
+-- gets the current date, along with the % of the current day
+---@return number current_date the current day plus the current day percentage.
+function CapturePointPayments.getDate()
+	local time_data = server.getTime()
+
+	local total_days = server.getDateValue()
+
+	return total_days + time_data.percent
+end
+
+-- resets the sleep tracker
+function CapturePointPayments.resetSleepTracker()
+	g_savedata.libraries.capture_point_payments.sleep_tracker = {
+		normal = 0,
+		total = 0
+	}
+
+	g_savedata.libraries.capture_point_payments.last_payout = server.getDateValue() + g_savedata.flags.capture_point_payroll_time
+end
+
+-- Gets the sleep ratio
+---@return number sleep_ratio value of 0-1, if the player has consantly been sleeping, the value will be 0, if the player has never slept, then the value will be 1.
+function CapturePointPayments.getSleepRatio()
+	local sleep_tracker = g_savedata.libraries.capture_point_payments.sleep_tracker
+
+	return sleep_tracker.normal/sleep_tracker.total
+end
+
+--[[
+
+
+Flag Registers
+
+
+]]
+
+--[[
+Number Flags
+]]
+
+--[[
+	capture_point_payroll_frequency flag,
+	controls the frequency of which you get a payroll for how many capture points you hold in days.
+]]
+Flag.registerNumberFlag(
+	"capture_point_payroll_frequency",
+	7,
+	{
+		"balance",
+		"capture points",
+		"payroll",
+		"no performance impact"
+	},
+	"normal",
+	"admin",
+	nil,
+	"Controls the frequency of which you get a payroll for how many capture points you hold in days.",
+	nil,
+	nil
+)
+
+--[[
+	capture_point_payroll_frequency flag,
+	controls how much money you get per capture point you hold.
+]]
+Flag.registerNumberFlag(
+	"capture_point_payroll_amount",
+	700,
+	{
+		"balance",
+		"capture points",
+		"payroll",
+		"no performance impact"
+	},
+	"normal",
+	"admin",
+	nil,
+	"Controls how much money you get per capture point you hold.",
+	0,
+	nil
+)
+
+--[[ 
+	capture_point_payroll_frequency flag,
+	controls at which time of the day you will recieve the payment, 
+	may have strange behaviour when the payroll frequency is less than 1.
+]]
+Flag.registerNumberFlag(
+	"capture_point_payroll_time",
+	0.2916666667,
+	{
+		"balance",
+		"capture points",
+		"payroll",
+		"no performance impact"
+	},
+	"normal",
+	"admin",
+	nil,
+	"Controls at which time of the day you will recieve the payment, may have strange behaviour when the payroll frequency is less than 1.",
+	0,
+	1
+)
+
+--[[
+	capture_point_payroll_sleep_ratio_max flag,
+	controls the minimum amount of time you must've spent not asleep for you to get the payroll.
+]]
+Flag.registerNumberFlag(
+	"capture_point_payroll_sleep_ratio_max",
+	0.3,
+	{
+		"balance",
+		"capture points",
+		"payroll",
+		"no performance impact"
+	},
+	"normal",
+	"admin",
+	nil,
+	"Controls the minimum amount of time you must've spent not asleep for you to get the payroll.",
+	0,
+	1
+)
+ -- controls the payroll system for how many islands you hold. -- optimized island lookups and handles the island_grid
+--[[
+	Capture System - Manages island capture progress, faction changes, and associated events.
+	Provides clean separation of capture mechanics from UI/tick logic.
+]]
+
+CaptureSystem = {}
+
+-- shortened library name
+cs = CaptureSystem
+
+--[[
+
+
+	Classes
+
+
+]]
+
+---@class IslandCaptureState
+---@field capture_timer number Current capture progress (0 to CAPTURE_TIME)
+---@field faction FACTION Current controlling faction
+---@field ai_capturing number Number of AI units capturing
+---@field players_capturing number Number of players capturing
+---@field is_contested boolean Whether AI and players are both capturing
+---@field last_faction_change number Timestamp of last faction change (for UI updates)
+
+--[[
+
+
+    Constants
+
+
+]]
+
+CAPTURE_TICK_RATE = 60
+CAPTURE_SPEEDS = { 1, 1.35, 1.7, 2 }
+
+--[[
+
+
+	Variables
+
+
+]]
+
+g_savedata.libraries.capture_system = {
+	--- Island dirty flags for UI updates (map, tooltip, etc)
+	---@type table<integer, boolean>
+	dirty_islands = {},
+}
+
+--[[
+
+
+	Functions - Capture Mechanics
+
+    
+]]
+
+---Contains the equation used for calculating the change in capture progress, since its reused so often
+---@param capturer_amount integer The amount of units capturing (either player or AI)
+---@param game_ticks number
+---@param speed number The base speed multiplier (higher for players, lower for AI)
+function CaptureSystem.calculateProgressChange(capturer_amount, game_ticks, speed)
+	capturer_amount = math.min(capturer_amount, #CAPTURE_SPEEDS)
+    return (speed * CAPTURE_SPEEDS[capturer_amount]) * CAPTURE_TICK_RATE * game_ticks
+end
+
+---Updates the capture timer for an island based on the amount of ai and players capturing
+---@param island ISLAND
+---@param ai_count integer Number of AI units capturing
+---@param player_count integer Number of players capturing
+---@param game_ticks number Tick delta from onTick
+function CaptureSystem.updateCaptureTimer(island, ai_count, player_count, game_ticks)
+	if not island then
+		return
+	end
+
+	-- Clamp counts to array bounds
+	ai_count = math.min(ai_count, #CAPTURE_SPEEDS)
+	player_count = math.min(player_count, #CAPTURE_SPEEDS)
+
+	local old_timer = island.capture_timer
+	local CAPTURE_TIME = g_savedata.settings.CAPTURE_TIME
+
+	-- Apply contested mode logic
+	if g_savedata.settings.CONTESTED_MODE and ai_count > 0 and player_count > 0 then
+		island.is_contested = true
+        CaptureSystem.markDirty(island.index) -- So the tooltip can update stuff like remaining enemys
+	else
+		island.is_contested = false
+
+		-- Apply capture progress
+		if player_count > 0 and CAPTURE_TIME > island.capture_timer then
+			island.capture_timer = island.capture_timer + CaptureSystem.calculateProgressChange(player_count, game_ticks, 5)
+
+		elseif ai_count > 0 and 0 < island.capture_timer then
+			island.capture_timer = island.capture_timer - CaptureSystem.calculateProgressChange(ai_count, game_ticks, 1)
+		end
+	end
+
+	-- Make sure its within limits
+	island.capture_timer = math.clamp(island.capture_timer, 0, CAPTURE_TIME)
+
+	-- Mark island as needing UI update if timer changed
+	if island.capture_timer ~= old_timer then
+		CaptureSystem.markDirty(island.index)
+	end
+end
+
+---Check if island should change faction and apply the change
+---@param island ISLAND
+---@return FACTION|nil new_faction The faction it changed to, or nil if no change
+function CaptureSystem.resolveFactionChange(island)
+	if not island then
+		return nil
+	end
+
+	local CAPTURE_TIME = g_savedata.settings.CAPTURE_TIME
+	local new_faction = nil
+
+	-- Only main bases don't capture
+	if island.index == g_savedata.ai_base_island.index or island.index == g_savedata.player_base_island.index then
+		return nil
+	end
+
+	if island.capture_timer <= 0 and island.faction ~= ISLAND.FACTION.AI then
+		new_faction = ISLAND.FACTION.AI
+	elseif island.capture_timer >= CAPTURE_TIME and island.faction ~= ISLAND.FACTION.PLAYER then
+		new_faction = ISLAND.FACTION.PLAYER
+	end
+
+	if new_faction then
+		local old_faction = island.faction
+		IslandRegistry.setFaction(island, new_faction)
+		island.capture_timer = new_faction == ISLAND.FACTION.AI and 0 or CAPTURE_TIME
+		CaptureSystem.markDirty(island.index)
+		return new_faction
+	end
+
+	return nil
+end
+
+--[[
+
+
+	Functions - UI / Status
+
+
+]]
+
+---Build tooltip text for an island flag based on current capture state
+---@param island ISLAND
+---@return string tooltip The formatted tooltip text
+function CaptureSystem.buildCaptureTooltip(island)
+	if not island then
+		return ""
+	end
+
+	local CAPTURE_TIME = g_savedata.settings.CAPTURE_TIME
+	local cap_percent = (island.capture_timer / CAPTURE_TIME) * 100
+	local capturing_status = "Revolting" -- Should never happen
+	local cp_status = ""
+
+	if island.is_contested then
+		capturing_status = "Contested"
+		cp_status = "Remove the ${enemy_capturing_count} enemies to resume capturing."
+	elseif island.faction ~= ISLAND.FACTION.PLAYER then
+		if island.ai_capturing == 0 and island.players_capturing == 0 then
+			capturing_status = "Capture"
+			cp_status = "Get closer to the capture point to begin capturing."
+		elseif island.ai_capturing == 0 then
+			capturing_status = "Capturing"
+			cp_status = "${time_until_faction_change} until under player control."
+		else
+			capturing_status = "Losing"
+			cp_status = "${time_until_faction_change} until under enemy control."
+		end
+	else
+		if island.ai_capturing == 0 and island.players_capturing == 0 or cap_percent == 100 then
+			capturing_status = "Captured"
+			cp_status = "Under full player control."
+		elseif island.ai_capturing == 0 then
+			capturing_status = "Re-Capturing"
+			cp_status = "${time_until_faction_change} until under full player control."
+		else
+			capturing_status = "Losing"
+			cp_status = "${time_until_faction_change} until under enemy control."
+		end
+	end
+
+    -- Add formatting
+	local tooltip = ("%s: %0.2f%%\n%s"):format(capturing_status, cap_percent, cp_status)
+	
+    -- Format in the field enemy_capturing_count
+    tooltip = tooltip:setField("enemy_capturing_count", island.ai_capturing)
+
+    -- Format in the field time_until_faction_change
+	if tooltip:hasField("time_until_faction_change") then
+        -- Calculate the time until the faction changes
+		local time_till_faction_change = 0
+		local capture_rate = 0
+
+		if island.players_capturing > 0 and g_savedata.settings.CAPTURE_TIME > island.capture_timer then
+            capture_rate = CaptureSystem.calculateProgressChange(island.players_capturing, 1, 5)
+			time_till_faction_change = (g_savedata.settings.CAPTURE_TIME - island.capture_timer) / capture_rate * CAPTURE_TICK_RATE / 60
+		elseif island.ai_capturing > 0 and 0 < island.capture_timer then
+            capture_rate = CaptureSystem.calculateProgressChange(island.ai_capturing, 1, 1)
+			time_till_faction_change = island.capture_timer / capture_rate * CAPTURE_TICK_RATE / 60
+		end
+
+		local formatted_timer = string.formatTime(time_formats.yMdhms, time_till_faction_change, false)
+		tooltip = tooltip:setField("time_until_faction_change", formatted_timer, true)
+	
+        -- Add the capture timer debug if the flag show_capture_timer_debug is enabled
+        if g_savedata.flags.show_capture_timer_debug then
+            tooltip = tooltip .. (" capture rate:%s time_till_faction_change:%s formatted_time:%s"):format(capture_rate, time_till_faction_change, formatted_timer)
+        end
+    end
+
+	return tooltip
+end
+
+---Mark an island as needing its tooltip updated
+---@param island_index integer
+function CaptureSystem.markDirty(island_index)
+	g_savedata.libraries.capture_system.dirty_islands[island_index] = true
+end
+
+---Get and clear dirty flag for an island
+---@param island_index integer
+---@return boolean is_dirty Whether the island needs UI update
+function CaptureSystem.checkAndClearDirty(island_index)
+	local is_dirty = g_savedata.libraries.capture_system.dirty_islands[island_index] or false
+	g_savedata.libraries.capture_system.dirty_islands[island_index] = nil
+	return is_dirty
+end
+
+---Clear all dirty flags
+function CaptureSystem.clearAllDirty()
+	g_savedata.libraries.capture_system.dirty_islands = {}
+end
+
+--[[
+
+
+	Functions - Faction Queries
+
+
+]]
+
+---Get all islands controlled by a faction
+---@param faction FACTION
+---@return table<integer, ISLAND>
+function CaptureSystem.getIslandsByFaction(faction)
+	return IslandRegistry.getFactionMap(faction)
+end
+
+---Count islands by faction
+---@param faction FACTION
+---@return integer count
+function CaptureSystem.countIslandsByFaction(faction)
+	local map = IslandRegistry.getFactionMap(faction)
+	return table.length(map)
+end
+ -- capture progress and faction change logic
 --[[
 	
 Copyright 2024 Liam Matthews
@@ -14229,7 +14852,6 @@ function setupMain(is_world_create)
 
 			start_time = s.getTimeMillisec()
 			local spawn_zones = sup.spawnZones()
-			start_time = s.getTimeMillisec()
 			-- add them to a list indexed by which island the zone belongs to
 			-- local tile_zones = sup.sortSpawnZones(spawn_zones)
 
@@ -14242,7 +14864,7 @@ function setupMain(is_world_create)
 
 			d.print("creating player's main base...", true, 0)
 
-			-- init player base
+			-- get all island zones
 			local islands = s.getZones("capture")
 
 			-- filter NSO and non NSO exclusive islands
@@ -14251,52 +14873,26 @@ function setupMain(is_world_create)
 					d.print("removed "..island.name.." because it is NSO exclusive", true, 0)
 					table.remove(islands, island_index)
 				elseif g_savedata.info.mods.NSO and Tags.has(island.tags, "not_NSO") then
-					table.remove(islands, island_index)
 					d.print("removed "..island.name.." because it's incompatible with NSO", true, 0)
+					table.remove(islands, island_index)
 				end
 			end
-
+			
+			-- setup the player base
 			for island_index, island in ipairs(islands) do
 
 				local island_tile = s.getTile(island.transform)
 				if island_tile.name == start_island.name or (island_tile.name == "data/tiles/island_43_multiplayer_base.xml" and g_savedata.player_base_island == nil) then
-					if not Tags.has(island, "not_main_base") then
+					if not Tags.has(island.tags, "not_main_base") then
 						local flag = s.spawnAddonComponent(m.multiply(island.transform, flag_prefab.transform), s.getAddonIndex(), flag_prefab.location_index, flag_prefab.object_index, 0)
-						---@class PLAYER_ISLAND
-						g_savedata.player_base_island = {
-							name = island.name,
-							index = island_index,
-							flag_vehicle = flag,
-							transform = island.transform,
-							tags = island.tags,
-							faction = ISLAND.FACTION.PLAYER,
-							is_contested = false,
-							capture_timer = g_savedata.settings.CAPTURE_TIME,
-							ui_id = server.getMapID() --[[@as SWUI_ID]],
-							assigned_squad_index = -1,
-							zones = {
-								turrets = {},
-								land = {},
-								sea = {}
-							},
-							payroll_multiplier = Tags.getValue(island.tags, "payroll_multiplier", false) or 1,
-							ai_capturing = 0,
-							players_capturing = 0,
-							defenders = 0,
-							is_scouting = false,
-							last_defended = 0,
-							cargo = {
-								oil = 0,
-								jet_fuel = 0,
-								diesel = 0
-							},
-							cargo_transfer = {
-								oil = 0,
-								jet_fuel = 0,
-								diesel = 0
-							},
-							object_type = "island"
-						}
+						g_savedata.player_base_island = Island.createIslandData(
+							island,
+							island_index,
+							ISLAND.FACTION.PLAYER,
+							flag,
+							g_savedata.settings.CAPTURE_TIME,
+							{ oil = 0, jet_fuel = 0, diesel = 0 }
+						)
 						
 						-- only break if the island's name is the same as the island the player is starting at
 						-- as breaking if its the multiplayer base could cause the player to always start at the multiplayer base in specific scenarios
@@ -14340,41 +14936,15 @@ function setupMain(is_world_create)
 			--local island_tile, is_success = s.getTile(ai_island.transform)
 
 			local flag = s.spawnAddonComponent(m.multiply(ai_island.transform, flag_prefab.transform), s.getAddonIndex(), flag_prefab.location_index, flag_prefab.object_index, 0)
-			---@class AI_ISLAND
-			g_savedata.ai_base_island = {
-				name = ai_island.name,
-				index = ai_base_index,
-				flag_vehicle = flag,
-				transform = ai_island.transform,
-				tags = ai_island.tags,
-				faction = ISLAND.FACTION.AI,
-				is_contested = false,
-				capture_timer = 0,
-				ui_id = server.getMapID() --[[@as SWUI_ID]],
-				assigned_squad_index = -1,
-				production_timer = 0,
-				zones = {
-					turrets = {},
-					land = {},
-					sea = {}
-				},
-				ai_capturing = 0,
-				players_capturing = 0,
-				defenders = 0,
-				is_scouting = false,
-				last_defended = 0,
-				cargo = {
-					oil = 7500,
-					jet_fuel = 7500,
-					diesel = 7500
-				},
-				cargo_transfer = {
-					oil = 0,
-					jet_fuel = 0,
-					diesel = 0
-				},
-				object_type = "island"
-			}
+			g_savedata.ai_base_island = Island.createIslandData(
+				ai_island,
+				ai_base_index,
+				ISLAND.FACTION.AI,
+				flag,
+				0,
+				{ oil = 7500, jet_fuel = 7500, diesel = 7500 },
+				0
+			)
 
 			d.print("Setup AI Base island: "..g_savedata.ai_base_island.index.." \""..g_savedata.ai_base_island.name.."\"", true, 0)
 
@@ -14385,55 +14955,28 @@ function setupMain(is_world_create)
 			d.print("setting up remaining neutral islands...", true, 0)
 
 			local islands_count = table.length(islands) * g_savedata.settings.ISLAND_COUNT
+			local spawned_neutral_islands = 0
 
 			-- set up remaining neutral islands
 			for island_index, island in pairs(islands) do
-				local island_tile, _ = s.getTile(island.transform)
-
 				local flag = s.spawnAddonComponent(m.multiply(island.transform, flag_prefab.transform), s.getAddonIndex(), flag_prefab.location_index, flag_prefab.object_index, 0)
-				---@class ISLAND
-				local new_island = {
-					name = island.name,
-					index = island_index,
-					flag_vehicle = flag,
-					transform = island.transform,
-					tags = island.tags,
-					faction = ISLAND.FACTION.NEUTRAL,
-					is_contested = false,
-					capture_timer = g_savedata.settings.CAPTURE_TIME / 2,
-					ui_id = server.getMapID() --[[@as SWUI_ID]],
-					assigned_squad_index = -1,
-					zones = {
-						turrets = {},
-						land = {},
-						sea = {}
-					},
-					payroll_multiplier = Tags.getValue(island.tags, "payroll_multiplier", false) or 1,
-					ai_capturing = 0,
-					players_capturing = 0,
-					defenders = 0,
-					is_scouting = false,
-					last_defended = 0,
-					cargo = {
-						oil = 0,
-						jet_fuel = 0,
-						diesel = 0
-					},
-					cargo_transfer = {
-						oil = 0,
-						jet_fuel = 0,
-						diesel = 0
-					},
-					object_type = "island"
-				}
+				local new_island = Island.createIslandData(
+					island,
+					island_index,
+					ISLAND.FACTION.NEUTRAL,
+					flag,
+					g_savedata.settings.CAPTURE_TIME / 2,
+					{ oil = 0, jet_fuel = 0, diesel = 0 }
+				)
 
 				--new_island.zones = tile_zones[island_tile.name]
 
 				g_savedata.islands[new_island.index] = new_island
+				spawned_neutral_islands = spawned_neutral_islands + 1
 				d.print("Setup neutral island: "..new_island.index.." \""..island.name.."\"", true, 0)
 
 				-- stop creating new islands if we've reached the island limit
-				if(table.length(g_savedata.islands) >= islands_count) then
+				if spawned_neutral_islands >= islands_count then
 					break
 				end
 			end
@@ -14442,6 +14985,20 @@ function setupMain(is_world_create)
 			start_time = s.getTimeMillisec()
 
 			-- link the zones to the island which is closest to the zone
+			local all_islands = {
+				g_savedata.ai_base_island,
+				g_savedata.player_base_island
+			}
+
+			local islands_by_name = {
+				[g_savedata.ai_base_island.name] = g_savedata.ai_base_island,
+				[g_savedata.player_base_island.name] = g_savedata.player_base_island
+			}
+
+			for _, island in pairs(g_savedata.islands) do
+				table.insert(all_islands, island)
+				islands_by_name[island.name] = island
+			end
 
 			for zone_type, zones in pairs(spawn_zones) do
 
@@ -14457,41 +15014,17 @@ function setupMain(is_world_create)
 						end
 
 						-- find the capture point which shares the name of the zone's owner override
-						
-						-- check ai base island
-						if g_savedata.ai_base_island.name == owner_name then
-							table.insert(g_savedata.ai_base_island.zones[zone_type], zone)
+						local owner_island = islands_by_name[owner_name]
+						if owner_island then
+							table.insert(owner_island.zones[zone_type], zone)
 							goto setupMain_setupIslands_setupZones_continue_zone
-						end
-
-						-- check player base island
-						if g_savedata.player_base_island.name == owner_name then
-							table.insert(g_savedata.player_base_island.zones[zone_type], zone)
-							goto setupMain_setupIslands_setupZones_continue_zone
-						end
-
-						-- check other islands
-						for _, island in pairs(g_savedata.islands) do
-							if island.name == owner_name then
-								table.insert(island.zones[zone_type], zone)
-								goto setupMain_setupIslands_setupZones_continue_zone
-							end
 						end
 					end
 				
-					-- get start with distance from ai island
-					local closest_island = g_savedata.ai_base_island
-					local closest_distance = matrix.xzDistance(zone.transform, g_savedata.ai_base_island.transform)
-
-					-- check if player base is closer
-					local player_island_distance = matrix.xzDistance(zone.transform, g_savedata.player_base_island.transform)
-					if closest_distance > player_island_distance then
-						closest_distance = player_island_distance
-						closest_island = g_savedata.player_base_island --[[@as PLAYER_ISLAND]]
-					end
-
-					-- check all of the other islands
-					for _, island in pairs(g_savedata.islands) do
+					local closest_island = all_islands[1]
+					local closest_distance = matrix.xzDistance(zone.transform, closest_island.transform)
+					for island_index = 2, #all_islands do
+						local island = all_islands[island_index]
 						local island_distance = matrix.xzDistance(zone.transform, island.transform)
 						if closest_distance > island_distance then
 							closest_distance = island_distance
@@ -14584,6 +15117,8 @@ function setupMain(is_world_create)
 		end
 	end
 
+	IslandRegistry.rebuild()
+
 	g_savedata.info.setup = true
 	-- this one will reset every reload/load of the world, this ensures that tracebacks wont be enabled before setupMain is finished.
 	addon_setup = true
@@ -14627,7 +15162,7 @@ function captureIsland(island, override, peer_id)
 	if faction_to_set == ISLAND.FACTION.AI then
 		onCaptureIsland(island, faction_to_set, island.faction)
 		island.capture_timer = 0
-		island.faction = ISLAND.FACTION.AI
+		IslandRegistry.setFaction(island, ISLAND.FACTION.AI)
 		g_savedata.is_attack = false
 		updatePeerIslandMapData(-1, island)
 
@@ -14653,7 +15188,7 @@ function captureIsland(island, override, peer_id)
 	elseif faction_to_set == ISLAND.FACTION.PLAYER then
 		onCaptureIsland(island, faction_to_set, island.faction)
 		island.capture_timer = g_savedata.settings.CAPTURE_TIME
-		island.faction = ISLAND.FACTION.PLAYER
+		IslandRegistry.setFaction(island, ISLAND.FACTION.PLAYER)
 		updatePeerIslandMapData(-1, island)
 
 		if peer_id then
@@ -14676,7 +15211,7 @@ function captureIsland(island, override, peer_id)
 	elseif faction_to_set == ISLAND.FACTION.NEUTRAL then
 		onCaptureIsland(island, faction_to_set, island.faction)
 		island.capture_timer = g_savedata.settings.CAPTURE_TIME/2
-		island.faction = ISLAND.FACTION.NEUTRAL
+		IslandRegistry.setFaction(island, ISLAND.FACTION.NEUTRAL)
 		updatePeerIslandMapData(-1, island)
 
 		if peer_id then
@@ -15357,9 +15892,7 @@ function tickGamemode(game_ticks)
 	end
 
 	-- tick capture rates
-	--local capture_tick_rate = g_savedata.settings.CAPTURE_TIME/400/5 -- time it takes for it to move 0.25%
-	local capture_tick_rate = 60 -- tick every second.
-	if isTickID(0, capture_tick_rate) then -- ticks the time it should take to move 0.25%
+	if isTickID(0, CAPTURE_TICK_RATE) then -- ticks the time it should take to move 0.25%
 		-- check all ai that are within the capture radius
 		for group_id, island in pairs(g_savedata.sweep_and_prune.ai_pairs) do
 			local vehicle_object, _, _ = Squad.getVehicle(group_id)
@@ -15476,7 +16009,7 @@ function tickGamemode(game_ticks)
 		end
 
 		-- tick spawning for ai vehicles (to remove as will be replaced to be dependant on logistics system)
-		g_savedata.ai_base_island.production_timer = g_savedata.ai_base_island.production_timer + capture_tick_rate * game_ticks
+		g_savedata.ai_base_island.production_timer = g_savedata.ai_base_island.production_timer + CAPTURE_TICK_RATE * game_ticks
 		if g_savedata.ai_base_island.production_timer > g_savedata.settings.AI_PRODUCTION_TIME_BASE then
 			g_savedata.ai_base_island.production_timer = 0
 
@@ -15505,107 +16038,33 @@ function tickGamemode(game_ticks)
 				end
 			end
 
-			-- display new capture data
-			if island.players_capturing > 0 and island.ai_capturing > 0 and g_savedata.settings.CONTESTED_MODE then -- if theres ai and players capping, and if contested mode is enabled
-				if island.is_contested == false then -- notifies that an island is being contested
-					s.notify(-1, "ISLAND CONTESTED", "An island is being contested!", 1)
-					island.is_contested = true
-				end
-			else
-				island.is_contested = false
-				if island.players_capturing > 0 and g_savedata.settings.CAPTURE_TIME > island.capture_timer then -- tick player progress if theres one or more players capping
-					island.capture_timer = island.capture_timer + ((ISLAND_CAPTURE_AMOUNT_PER_SECOND * 5) * capture_speeds[math.min(island.players_capturing, 3)]) * capture_tick_rate * game_ticks
+			-- Update capture timer based on who's capturing
+			local contested_before = island.is_contested
+			CaptureSystem.updateCaptureTimer(island, island.ai_capturing, island.players_capturing, game_ticks)
 
-				elseif island.ai_capturing > 0 and 0 < island.capture_timer then -- tick AI progress if theres one or more ai capping
-					island.capture_timer = island.capture_timer - (ISLAND_CAPTURE_AMOUNT_PER_SECOND * capture_speeds[math.min(island.ai_capturing, 3)]) * capture_tick_rate * game_ticks
-				end
+			-- Check if island should change faction and trigger events if it did
+			local new_faction = CaptureSystem.resolveFactionChange(island)
+			if new_faction then
+				captureIsland(island, new_faction, nil)
 			end
 
-			-- makes sure its within limits
-			island.capture_timer = math.clamp(island.capture_timer, 0, g_savedata.settings.CAPTURE_TIME)
-			
-			-- displays tooltip on vehicle
-			local cap_percent = island.capture_timer/g_savedata.settings.CAPTURE_TIME * 100
-
-			local capturing_status = "Revolting" -- should never happen, but why not
-			if island.is_contested then -- if the point is contested (both teams trying to cap)
-				--s.setVehicleTooltip(island.flag_vehicle.id, "Contested: "..cap_percent.."%")
-				capturing_status = "Contested"
-				cp_status = "Remove the ${enemy_capturing_count} enemies to resume capturing."
-			elseif island.faction ~= ISLAND.FACTION.PLAYER then -- if the player doesn't own the point
-				if island.ai_capturing == 0 and island.players_capturing == 0 then -- if nobody is capping the point
-					--s.setVehicleTooltip(island.flag_vehicle.id, "Capture: "..cap_percent.."%")
-					capturing_status = "Capture"
-					cp_status = "Get closer to the capture point to begin capturing."
-				elseif island.ai_capturing == 0 then -- if players are capping the point
-					--s.setVehicleTooltip(island.flag_vehicle.id, "Capturing: "..cap_percent.."%")
-					capturing_status = "Capturing"
-					cp_status = "${time_until_faction_change} until under player control."
-				else -- if ai is capping the point
-					--s.setVehicleTooltip(island.flag_vehicle.id, "Losing: "..cap_percent.."%")
-					capturing_status = "Losing"
-					cp_status = "${time_until_faction_change} until under enemy control."
-				end
-			else -- if the player does own the point
-				if island.ai_capturing == 0 and island.players_capturing == 0 or cap_percent == 100 then -- if nobody is capping the point or its at 100%
-					--s.setVehicleTooltip(island.flag_vehicle.id, "Captured: "..cap_percent.."%")
-					capturing_status = "Captured"
-					cp_status = "Under full player control."
-				elseif island.ai_capturing == 0 then -- if players are capping the point
-					--s.setVehicleTooltip(island.flag_vehicle.id, "Re-Capturing: "..cap_percent.."%")
-					capturing_status = "Re-Capturing"
-					cp_status = "${time_until_faction_change} until under full player control."
-				else -- if ai is capping the point
-					--s.setVehicleTooltip(island.flag_vehicle.id, "Losing: "..cap_percent.."%")
-					capturing_status = "Losing"
-					cp_status = "${time_until_faction_change} until under enemy control."
-				end
+			-- Notify if it just became contested
+			if island.is_contested and not contested_before then
+				s.notify(-1, "ISLAND CONTESTED", "An island is being contested!", 1)
+				CaptureSystem.markDirty(island.index) -- So the tooltip updates
 			end
 
-			-- format the tooltip
-			local capture_vehicle_tooltip = ("%s: %0.2f%%\n%s"):format(capturing_status, cap_percent, cp_status)
-
-			-- format in the field enemy_capturing_count
-			capture_vehicle_tooltip = capture_vehicle_tooltip:setField("enemy_capturing_count", island.ai_capturing)
-
-			-- format in the field time_until_faction_change
-			if capture_vehicle_tooltip:hasField("time_until_faction_change") then
-				-- calculate the time until the faction changes.
-				local time_till_faction_change = 0
-
-				local capture_rate = 0
-				
-				if island.players_capturing > 0 and g_savedata.settings.CAPTURE_TIME > island.capture_timer then -- tick player progress if theres one or more players capping
-					capture_rate = ((ISLAND_CAPTURE_AMOUNT_PER_SECOND * 5) * capture_speeds[math.min(island.players_capturing, 3)]) * capture_tick_rate * game_ticks
-					
-					time_till_faction_change = (g_savedata.settings.CAPTURE_TIME-island.capture_timer)/capture_rate*capture_tick_rate/60
-
-				elseif island.ai_capturing > 0 and 0 < island.capture_timer then -- tick AI progress if theres one or more ai capping
-					capture_rate = (ISLAND_CAPTURE_AMOUNT_PER_SECOND * capture_speeds[math.min(island.ai_capturing, 3)]) * capture_tick_rate * game_ticks
-					
-					time_till_faction_change = island.capture_timer/capture_rate*capture_tick_rate/60
-				end
-
-				-- format it into time
-				local formatted_timer = string.formatTime(time_formats.yMdhms, time_till_faction_change, false)
-
-				-- set the time_until_faction_change field
-				capture_vehicle_tooltip = capture_vehicle_tooltip:setField("time_until_faction_change", formatted_timer, true)
-
-				-- add the capture timer debug if the flag show_capture_timer_debug is enabled 
-				if g_savedata.flags.show_capture_timer_debug then
-					capture_vehicle_tooltip = capture_vehicle_tooltip..(" capture_rate:%s time_till_faction_change:%s formatted_timer:%s"):format(capture_rate, time_till_faction_change, formatted_timer)
-				end
+			-- Build and set tooltip if its changed
+			if CaptureSystem.checkAndClearDirty(island.index) then
+				local capture_vehicle_tooltip = CaptureSystem.buildCaptureTooltip(island)
+				s.setVehicleTooltip(island.flag_vehicle.id, capture_vehicle_tooltip)
 			end
-
-			s.setVehicleTooltip(island.flag_vehicle.id, capture_vehicle_tooltip)
 
 			updatePeerIslandMapData(-1, island)
 
 			-- resets amount capping
 			island.ai_capturing = 0
 			island.players_capturing = 0
-			captureIsland(island)
 		end
 	end
 
@@ -18341,7 +18800,7 @@ function tickIslands(game_ticks)
 
 			local island, got_island = Island.getDataFromIndex(island_index)
 
-			if not got_island then
+			if island == nil or not got_island then
 				d.print("(tickIslands) Island not found! island_index: "..tostring(island_index), true, 1)
 				goto break_island
 			end
@@ -19135,28 +19594,28 @@ end
 --------------------------------------------------------------------------------
 
 --- @param squad squadron
---- @param target_island AI_ISLAND|ISLAND|PLAYER_ISLAND
+--- @param target_island ISLAND
 function setSquadCommandPatrol(squad, target_island)
 	squad.target_island = target_island
 	Squad.setCommand(squad, SQUAD.COMMAND.PATROL)
 end
 
 --- @param squad squadron
---- @param target_island AI_ISLAND|ISLAND|PLAYER_ISLAND
+--- @param target_island ISLAND
 function setSquadCommandStage(squad, target_island)
 	squad.target_island = target_island
 	Squad.setCommand(squad, SQUAD.COMMAND.STAGE)
 end
 
 --- @param squad squadron
---- @param target_island AI_ISLAND|ISLAND|PLAYER_ISLAND
+--- @param target_island ISLAND
 function setSquadCommandAttack(squad, target_island)
 	squad.target_island = target_island
 	Squad.setCommand(squad, SQUAD.COMMAND.ATTACK)
 end
 
 --- @param squad squadron
---- @param target_island AI_ISLAND|ISLAND|PLAYER_ISLAND
+--- @param target_island ISLAND
 function setSquadCommandDefend(squad, target_island)
 	squad.target_island = target_island
 	Squad.setCommand(squad, SQUAD.COMMAND.DEFEND)

@@ -34,7 +34,7 @@ Squad = {}
 ---@field vehicle_type VEHICLE_TYPE the vehicle type this squadron is made up of
 ---@field role string the role this squadron has
 ---@field vehicles table<integer, vehicle_object> the vehicles in this squadron
----@field target_island AI_ISLAND|PLAYER_ISLAND|ISLAND|nil the island this squadron is targetting
+---@field target_island ISLAND? the island this squadron is targetting
 ---@field target_vehicles table<integer, TargetVehicle>|nil the vehicles this squadron is targetting
 ---@field target_players table<integer, TargetPlayer>|nil the players this squadron is targetting
 ---@field investigate_transform SWMatrix|nil the transform this squadron is investigating *(only set when command is INVESTIGATE)*
@@ -285,7 +285,7 @@ end
 --- @param command SQUAD_COMMAND
 --- @vararg nil
 --- @return boolean success if the command was successfully set. If false, then either the parameters are invalid or theres a restriction blocking it
---- @overload fun(squad:squadron, command:"attack"|"stage"|"defend"|"patrol", target_island: ANY_ISLAND):boolean
+--- @overload fun(squad:squadron, command:"attack"|"stage"|"defend"|"patrol", target_island: ISLAND):boolean
 --- @overload fun(squad:squadron, command:"investigate", investigate_transform: SWMatrix):boolean
 function Squad.setCommand(squad, command, ...)
 	-- Input validation
@@ -353,7 +353,7 @@ end
 
 --- Returns whether or not the squad can access a given island
 --- @param squad squadron the squad to check
---- @param island AI_ISLAND|PLAYER_ISLAND|ISLAND the island to check
+--- @param island ISLAND the island to check
 --- @return boolean can_access whether or not the squad can access the island
 --- @return boolean is_success whether or not the function executed successfully
 function Squad.canAccessIsland(squad, island)

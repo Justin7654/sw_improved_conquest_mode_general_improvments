@@ -424,8 +424,8 @@ function Cargo.setKeypad(vehicle_id, keypad_name, cargo_type)
 	s.setVehicleKeypad(vehicle_id, keypad_name, s_fluid_types[cargo_type])
 end
 
----@param recipient vehicle_object|ISLAND|AI_ISLAND the island or vehicle object thats getting the cargo
----@param sender vehicle_object|ISLAND|AI_ISLAND the island or vehicle object thats sending the cargo
+---@param recipient vehicle_object|ISLAND the island or vehicle object thats getting the cargo
+---@param sender vehicle_object|ISLAND the island or vehicle object thats sending the cargo
 ---@param requested_cargo requestedCargo the cargo thats going between the sender and recipient
 ---@param transfer_time number how long the cargo transfer should take
 ---@param tick_rate number the tick rate
@@ -618,7 +618,7 @@ function Cargo.transfer(recipient, sender, requested_cargo, transfer_time, tick_
 	return false, "transfer incomplete"
 end
 
----@param island ISLAND|AI_ISLAND|PLAYER_ISLAND the island you want to produce the cargo at
+---@param island ISLAND the island you want to produce the cargo at
 ---@param natural_production number? the natural production of this island
 function Cargo.produce(island, natural_production)
 
@@ -670,7 +670,7 @@ function Cargo.produce(island, natural_production)
 	end
 end
 
----@return ISLAND|AI_ISLAND island the island thats best to resupply
+---@return ISLAND island the island thats best to resupply
 ---@return ICMResupplyWeights weight the weights of all of the cargo types for the resupply island
 function Cargo.getBestResupplyIsland()
 
@@ -717,7 +717,7 @@ function Cargo.getBestResupplyIsland()
 end
 
 ---@param resupply_weights ICMResupplyWeights the weights of all of the cargo types for the resupply island
----@return ISLAND|AI_ISLAND island the resupplier island
+---@return ISLAND island the resupplier island
 ---@return ICMResupplyWeights resupplier_weights the weights of all the cargo types for the resupplier island, sorted from most to least weight
 function Cargo.getBestResupplierIsland(resupply_weights)
 
@@ -768,7 +768,7 @@ function Cargo.getBestResupplierIsland(resupply_weights)
 	return resupplier_island, resupplier_resource
 end
 
----@param island ANY_ISLAND the island you want to get the resupply weight of
+---@param island ISLAND the island you want to get the resupply weight of
 ---@return ICMResupplyWeights weights the weights of all of the cargo types for the resupply island
 function Cargo.getResupplyWeight(island) -- get the weight of the island (for resupplying the island)
 	-- weight by how much cargo the island has
@@ -795,7 +795,7 @@ function Cargo.getResupplyWeight(island) -- get the weight of the island (for re
 	return weight
 end
 
----@param island ANY_ISLAND the island you want to get the resupplier weight of
+---@param island ISLAND the island you want to get the resupplier weight of
 ---@return ICMResupplyWeights weights the weights of all of the cargo types for the resupplier island
 function Cargo.getResupplierWeight(island) -- get weight of the island (for using it to resupply another island)
 	local oil_weight = (island.cargo.oil/(RULES.LOGISTICS.CARGO.ISLANDS.max_capacity*0.9)) -- oil
@@ -919,8 +919,8 @@ function Cargo.getRequestedCargo(cargo_weight, vehicle_object)
 	return requested_cargo
 end
 
----@param origin_island ISLAND|AI_ISLAND the island of which the cargo is coming from
----@param dest_island ISLAND|AI_ISLAND the island of which the cargo is going to
+---@param origin_island ISLAND the island of which the cargo is coming from
+---@param dest_island ISLAND the island of which the cargo is going to
 ---@return ICMRouteSegment[] best_route the best route to go from the origin to the destination
 function Cargo.getBestRoute(origin_island, dest_island) -- origin = resupplier island | dest = resupply island
 	local start_time = s.getTimeMillisec()
@@ -1440,11 +1440,10 @@ function Cargo.getTransportVehicle(vehicle_type)
 	return prefabs_data
 end
 
----@param island1 ISLAND|AI_ISLAND|PLAYER_ISLAND the first island you want to get the distance from
----@param island2 ISLAND|AI_ISLAND|PLAYER_ISLAND the second island you want to get the distance to
+---@param island1 ISLAND the first island you want to get the distance from
+---@param island2 ISLAND the second island you want to get the distance to
 ---@return table distance the distance between the first island and the second island | distance.land | distance.sea | distance.air
 function Cargo.getIslandDistance(island1, island2)
-
 	local first_cache_index = island2.index
 	local second_cache_index = island1.index
 

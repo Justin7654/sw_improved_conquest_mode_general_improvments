@@ -8,7 +8,6 @@
 require("libraries.addon.script.debugging")
 require("libraries.addon.script.players")
 require("libraries.addon.components.tags")
-require("libraries.icm.islands.islandRegistry")
 
 -- library name
 Island = {}

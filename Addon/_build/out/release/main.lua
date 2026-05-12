@@ -6257,920 +6257,6 @@ Command.registerCommand(
 
 
 ]]
---[[
-
-
-	Library Setup
-
-
-]]
---[[
-spatialGrid.lua
-
-Uses Spatial Hashing to add objects to buckets on a 2d grid
-Allows for fast lookup of nearby objects by only checking the buckets near the query point instead of every object in the world
-]]
-
-
---[[
-
-
-    Library Setup
-
-
-]]
-
--- required libraries
-
-SpatialGrid = {}
-
---[[
-
-
-	Variables
-   
-
-]]
-
---[[
-
-
-	Classes
-
-
-]]
-
----@alias spatialObjectID number A unique identifier for an object in the spatial grid. (For example a vehicle ID)
-
----@alias cellKey any
----@alias cellContents table<spatialObjectID, {obj: spatialObjectID, x: number, z: number}>
-
---[[
-
-
-	Functions         
-
-
-]]
-
---- Creates a new spatial grid
---- @param cell_size number The size of each grid cell. Should be roughly the size of your typical query radius.
-function SpatialGrid.new(cell_size)
-    ---@class SpatialGrid
-    local newGrid = {
-        cell_size = cell_size or 500,
-        cells = {}, ---@type table<cellKey, cellContents> The grid cells
-        object_keys = {}, ---@type table<spatialObjectID, cellKey>
-        stats = {count = 0, cells_used = 0},
-        frozen = false,  -- Whether the grid is frozen (no more modifications allowed)
-        add = SpatialGrid.add,
-        remove = SpatialGrid.remove,
-        update = SpatialGrid.update,
-        isObjectInGrid = SpatialGrid.isObjectInGrid,
-        clean = SpatialGrid.clean,
-        freeze = SpatialGrid.freeze,
-        query = SpatialGrid.query
-    }
-    return newGrid
-end
-
---- Freezes the grid, preventing you from making any more changes to it.
---- Reduces the grids memory use by removing unneeded data, and allows for query optimizations.
---- Frozen grids can not be unfrozen
---- @param grid SpatialGrid The grid created using SpatialGrid.new()
---- @return FrozenSpatialGrid frozenGrid The frozen grid
-function SpatialGrid.freeze(grid)
-    -- Remove all empty cells
-    SpatialGrid.clean(grid)
-    
-    -- Since the grid is no longer going to change, we can change the structure to make
-    -- querying faster. This changes it to a row/column system so querys can skip rows/columns
-    -- which are empty
-    local cell_size = grid.cell_size
-    local rows = {} ---@type table<integer, table<integer, cellContents>>
-    local rowRanges = {} ---@type table<integer, {minCx: integer, maxCx: integer}>
-    for _, cell in pairs(grid.cells) do
-        -- Convert the cell contents to a list so querying doesn't need to use pairs
-        local listCell = {}
-        for obj, pos in pairs(cell) do
-            table.insert(listCell, {obj=obj, x=pos.x, z=pos.z})
-        end
-
-        -- Calculate the cell's row and column
-        sampleObject = listCell[1]
-        local cx = math.floor(sampleObject.x / cell_size)
-        local cz = math.floor(sampleObject.z / cell_size)
-
-        -- Add the cell to its row
-        local row = rows[cz]
-        if not row then
-            row = {}
-            rows[cz] = row
-            rowRanges[cz] = {minCx = cx, maxCx = cx}
-        else
-            -- Used in querys to skip rows which don't have any cells in the query range
-            rowRanges[cz] = {minCx = math.min(rowRanges[cz].minCx, cx), maxCx = math.max(rowRanges[cz].maxCx, cx)}
-        end
-
-        row[cx] = listCell
-    end
-
-    ---@class FrozenSpatialGrid
-    local frozenGrid = {
-        cell_size = cell_size,
-        rows = rows,
-        rowRanges = rowRanges,
-        frozen = true,
-        query = SpatialGrid.queryFrozen
-    }
-    return frozenGrid
-end
-
----  Generates a unique integer key given cell coordinates
---- @param grid SpatialGrid The grid created using SpatialGrid.new()
---- @param x number X coordinate
---- @param z number Z coordinate
---- @return cellKey key The unique cell key
-function SpatialGrid.getCellKey(grid, x, z)
-    local c_x = math.floor(x / grid.cell_size)
-    local c_z = math.floor(z / grid.cell_size)
-    
-    return c_x + (c_z * 1000000)
-end
-
---- Adds an object to the grid
---- @param grid SpatialGrid The grid created using SpatialGrid.new()
---- @param obj spatialObjectID The object to track (must be valid table key)
---- @param x number X coordinate
---- @param z number Z coordinate
-function SpatialGrid.add(grid, obj, x, z)
-    if grid.object_keys[obj] then
-        -- If its already in the grid, update instead
-        return SpatialGrid.update(grid, obj, x, z)
-    end
-
-    local key = SpatialGrid.getCellKey(grid, x, z)
-    local cell = grid.cells[key]
-    if not cell then
-        -- Create new cell if it doesn't exist
-        cell = {}
-        grid.cells[key] = cell
-        grid.stats.cells_used = grid.stats.cells_used + 1
-    end
-    
-    -- Store position for fast distance checks later
-    cell[obj] = {obj=obj, x = x, z = z}
-    grid.object_keys[obj] = key
-    grid.stats.count = grid.stats.count + 1
-end
-
---- Removes an object from the grid
---- @param grid SpatialGrid The grid created using SpatialGrid.new()
---- @param obj spatialObjectID The object to remove
-function SpatialGrid.remove(grid, obj)
-    local key = grid.object_keys[obj]
-    if key then
-        local cell = grid.cells[key]
-        if cell then
-            cell[obj] = nil
-        end
-        grid.object_keys[obj] = nil
-        grid.stats.count = grid.stats.count - 1
-    end
-end
-
---- Updates an object's position in the grid
---- @param grid SpatialGrid The grid created using SpatialGrid.new()
---- @param obj spatialObjectID The object to update
---- @param x number Objects X coordinate
---- @param z number Objects Z coordinate
-function SpatialGrid.update(grid, obj, x, z)
-    local old_key = grid.object_keys[obj]
-    local new_key = SpatialGrid.getCellKey(grid, x, z)
-
-    if not old_key then
-        -- Object not in grid yet, add it
-        return SpatialGrid.add(grid, obj, x, z)
-    end
-
-    -- Check if the object has moved to a new cell
-    if old_key ~= new_key then
-        -- Remove from the old cell
-        if old_key then
-            local old_cell = grid.cells[old_key]
-            if old_cell then old_cell[obj] = nil end
-        end
-        
-        -- Get the new cell. Create it if it doesn't exist
-        local new_cell = grid.cells[new_key]
-        if not new_cell then
-            new_cell = {}
-            grid.cells[new_key] = new_cell
-            grid.stats.cells_used = grid.stats.cells_used + 1
-        end
-        
-        -- Add to new cell
-        new_cell[obj] = {obj=obj, x = x, z = z}
-        grid.object_keys[obj] = new_key
-    else
-        -- Same cell, just update position data
-        local cell = grid.cells[old_key]
-        cell[obj].x = x
-        cell[obj].z = z
-    end
-end
-
---- Checks if an object is in the grid already
---- @param grid SpatialGrid The grid created using SpatialGrid.new()
---- @param obj spatialObjectID The object to check
---- @return boolean inGrid True if the object is in the grid, false otherwise
-function SpatialGrid.isObjectInGrid(grid, obj)
-    return grid.object_keys[obj] ~= nil
-end
-
---- Sets all empty cells to nil to reduce memory usage if needed
---- @param grid SpatialGrid The grid created using SpatialGrid.new()
---- @return integer totalCleaned The total amount of cells cleaned
-function SpatialGrid.clean(grid)
-    local totalCleaned = 0
-
-    for cellKey, cellContents in pairs(grid.cells) do
-        if next(cellContents) == nil then
-            grid.cells[cellKey] = nil
-            totalCleaned = totalCleaned + 1
-        end
-    end
-    grid.stats.cells_used = math.max(0, grid.stats.cells_used - totalCleaned)
-    
-    return totalCleaned
-end
-
---- Queries the grid for objects within a radius
---- @param grid SpatialGrid The grid created using SpatialGrid.new()
---- @param x number Center X
---- @param z number Center Z
---- @param radius number Radius to search
---- @return spatialObjectID[] Found of objects found
-function SpatialGrid.query(grid, x, z, radius)
-    local result = {}
-    local result_count = 1
-    local cell_size = grid.cell_size
-    
-    -- Calculate bounds of the cells to check
-    local min_x = math.floor((x - radius) / cell_size)
-    local max_x = math.floor((x + radius) / cell_size)
-    local min_z = math.floor((z - radius) / cell_size)
-    local max_z = math.floor((z + radius) / cell_size)
-    
-    local r_sq = radius * radius
-    
-    -- Iterate the cells
-    for cz = min_z, max_z do
-        local z_offset = cz * 1000000
-        for cx = min_x, max_x do
-            local cell = grid.cells[cx + z_offset]
-            
-            if cell then
-                for obj, pos in pairs(cell) do
-                    -- Check exact distance of each item
-                    local dx = x - pos.x
-                    local dz = z - pos.z
-                    if (dx*dx + dz*dz) <= r_sq then
-                        result[result_count] = obj
-                        result_count = result_count + 1
-                    end
-                end
-            end
-        end
-    end
-    
-    return result
-end
-
---- Queries the grid for objects within a radius. Instead of looking up cell keys, this uses rows/columns
---- to only check cells which exist.
---- @param grid FrozenSpatialGrid The grid created using SpatialGrid.new()
---- @param x number Center X
---- @param z number Center Z
---- @param radius number Radius to search
---- @return spatialObjectID[] Found of objects found
-function SpatialGrid.queryFrozen(grid, x, z, radius)
-    local result = {}
-    local result_count = 1
-    local cell_size = grid.cell_size
-    local rows = grid.rows
-    local rowRanges = grid.rowRanges
-    
-    -- Calculate bounds of the cells to check
-    local min_x = math.floor((x - radius) / cell_size)
-    local max_x = math.floor((x + radius) / cell_size)
-    local min_z = math.floor((z - radius) / cell_size)
-    local max_z = math.floor((z + radius) / cell_size)
-    
-    local r_sq = radius * radius
-    
-    -- Iterate the cells
-    for cz = min_z, max_z do
-        local rowRange = rowRanges[cz]
-        if rowRange then
-            -- Skip if its cx range doesn't intersect with the query range
-            if rowRange.maxCx < min_x or rowRange.minCx > max_x then
-                goto skipRow
-            end
-
-            -- Loop through every cell in the row which is within the query range
-            local row = rows[cz]
-            for cx, cell in pairs(row) do
-                if cx >= min_x and cx <= max_x then
-                    for i=1, #cell do
-                        local obj_data = cell[i]
-                        local dx = x - obj_data.x
-                        local dz = z - obj_data.z
-                        if (dx * dx + dz * dz) <= r_sq then
-                            result[result_count] = obj_data.obj
-                            result_count = result_count + 1
-                        end
-                    end
-                end
-            end
-            ::skipRow::
-        end
-    end
-    
-    return result
-end
---[[
-	
-Copyright 2025 Liam Matthews
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-	http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-]]
-
--- Library Version 0.0.2
-
---[[
-
-
-	Library Setup
-
-
-]]
-
--- required libraries
-
----@diagnostic disable:duplicate-doc-field
----@diagnostic disable:duplicate-doc-alias
----@diagnostic disable:duplicate-set-field
-
---[[ 
-	Allows a library to easily bind to a callback, so it doesn't have to inject itself into each callback.
-]]
-
--- library name
-Binder = {
-	bind = {}
-}
-
---[[
-
-
-	Classes
-
-
-]]
-
--- onGroupSpawn
----@alias CallbackOnGroupSpawn fun(group_id: integer, peer_id: integer, x: number, y: number, z: number, group_cost: number)
-
--- onVehicleLoad
----@alias CallbackOnVehicleLoad fun(vehicle_id: integer)
-
--- onVehicleUnload
----@alias CallbackOnVehicleUnload fun(vehicle_id: integer)
-
--- onObjectLoad
----@alias CallbackOnObjectLoad fun(object_id: integer)
-
--- setupMain
----@alias CallbackSetupMain fun(is_world_create: boolean)
-
----@alias Callback
----| CallbackOnGroupSpawn
----| CallbackOnVehicleLoad
----| CallbackOnVehicleUnload
----| CallbackOnObjectLoad
----| CallbackSetupMain
-
----@class BindedCallback
----@field callback Callback the callback to call
----@field priority number the priority of the callback.
-
---[[
-
-
-	Variables
-
-
-]]
-
----@type table<string, table<integer, BindedCallback>>
-binded_callbacks = {
-	onGroupSpawn = {},
-	onVehicleLoad = {},
-	onVehicleUnload = {},
-	onObjectLoad = {},
-	setupMain = {}
-}
-
---[[
-
-
-	Functions
-
-
-]]
-
----@param callback_name string the name of the callback to bind to.
----@param callback Callback the callback to bind to the callback.
----@param priority integer? the priority of the callback, higher priority callbacks are called first.
-local function bindCallback(callback_name, callback, priority)
-
-	-- default the priority to 0 if not specified.
-	priority = priority or 0
-
-	-- get the list of binds for this callback.
-	local binds = binded_callbacks[callback_name]
-
-	-- check if the list exists
-	if not binds then
-		-- print an error
-		d.print(("The callback %s is not a valid callback."):format(callback_name), true, 1)
-		return
-	end
-
-	-- define the index to insert the callback at.
-	local insert_index = 1
-
-	-- find the index to insert the callback at (sorted by priority, goes to behind an existing callback if they share the same priority.)
-	for bind_index = 1, #binds do
-		-- if the priority is higher than the current bind's priority, break.
-		if binds[bind_index].priority > priority then
-			break
-		end
-
-		-- otherwise, set insert index to above this one.
-		insert_index = bind_index + 1
-	end
-
-	-- insert the callback at the insert index.
-	table.insert(binds, insert_index, 
-		{
-			callback = callback,
-			priority = priority
-		}
-	)
-end
-
---[[
-
-	onGroupSpawn
-
-]]
-
---[[
-	Inject.
-]]
-
----@diagnostic disable-next-line: undefined-global
-old_onGroupSpawn = onGroupSpawn
-
----@private
-function onGroupSpawn(...)
-
-	-- get the list of binds for this callback.
-	local binds = binded_callbacks.onGroupSpawn
-
-	-- check if the list exists
-	if not binds then
-		return
-	end
-
-	-- call each callback in order
-	for bind_index = 1, #binds do
-		binds[bind_index].callback(...)
-	end
-
-	-- call old callback, if it exists
-	if old_onGroupSpawn then
-		old_onGroupSpawn(...)
-	end
-end
-
---[[
-	Create bind function
-]]
-
---- Function for binding to a the onGroupSpawn callback.
----@param callback CallbackOnGroupSpawn the callback to bind to the onGroupSpawn callback.
----@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
-function Binder.bind.onGroupSpawn(callback, priority)
-	bindCallback(
-		"onGroupSpawn",
-		callback,
-		priority
-	)
-end
-
---[[
-
-	onVehicleLoad
-
-]]
-
---[[
-	Inject.
-]]
-
-old_onVehicleLoad = onVehicleLoad
-
----@private
-function onVehicleLoad(...)
-
-	-- get the list of binds for this callback.
-	local binds = binded_callbacks.onVehicleLoad
-
-	-- check if the list exists
-	if not binds then
-		return
-	end
-
-	-- call each callback in order
-	for bind_index = 1, #binds do
-		binds[bind_index].callback(...)
-	end
-
-	-- call old callback, if it exists
-	if old_onVehicleLoad then
-		old_onVehicleLoad(...)
-	end
-end
-
-
---[[
-	Create bind function
-]]
-
---- Function for binding to a the onVehicleLoad callback.
----@param callback CallbackOnVehicleLoad the callback to bind to the onVehicleLoad callback.
----@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
-function Binder.bind.onVehicleLoad(callback, priority)
-	bindCallback(
-		"onVehicleLoad",
-		callback,
-		priority
-	)
-end
-
---[[
-
-	onVehicleUnload
-
-]]
-
---[[
-	Inject.
-]]
-
-old_onVehicleUnload = onVehicleUnload
-
----@private
-function onVehicleUnload(...)
-
-	-- get the list of binds for this callback.
-	local binds = binded_callbacks.onVehicleUnload
-
-	-- check if the list exists
-	if not binds then
-		return
-	end
-
-	-- call each callback in order
-	for bind_index = 1, #binds do
-		binds[bind_index].callback(...)
-	end
-
-	-- call old callback, if it exists
-	if old_onVehicleUnload then
-		old_onVehicleUnload(...)
-	end
-end
-
---[[
-	Create bind function
-]]
-
---- Function for binding to a the onVehicleUnload callback.
----@param callback CallbackOnVehicleLoad the callback to bind to the onVehicleUnload callback.
----@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
-function Binder.bind.onVehicleUnload(callback, priority)
-	bindCallback(
-		"onVehicleUnload",
-		callback,
-		priority
-	)
-end
-
-
---[[
-
-	onObjectLoad
-
-]]
-
---[[
-	Inject.
-]]
-
-old_onObjectLoad = onObjectLoad
-
----@private
-function onObjectLoad(...)
-
-	-- get the list of binds for this callback.
-	local binds = binded_callbacks.onObjectLoad
-
-	-- check if the list exists
-	if not binds then
-		return
-	end
-
-	-- call each callback in order
-	for bind_index = 1, #binds do
-		binds[bind_index].callback(...)
-	end
-
-	-- call old callback, if it exists
-	if old_onObjectLoad then
-		old_onObjectLoad(...)
-	end
-end
-
---[[
-	Create bind function
-]]
-
---- Function for binding to a the onObjectLoad callback.
----@param callback CallbackOnObjectLoad the callback to bind to the onObjectLoad callback.
----@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
-function Binder.bind.onObjectLoad(callback, priority)
-	bindCallback(
-		"onObjectLoad",
-		callback,
-		priority
-	)
-end
-
---[[
-
-	setupMain
-
-]]
-
----@private
-function bindedSetupMain(...)
-	-- get the list of binds for this callback.
-	local binds = binded_callbacks.setupMain
-
-	-- check if the list exists
-	if not binds then
-		return
-	end
-
-	d.print(string.fromTable(binds))
-
-	-- call each callback in order
-	for bind_index = 1, #binds do
-		binds[bind_index].callback(...)
-	end
-end
-
---[[
-	Create bind function
-]]
-
---- Function for binding to a the setupMain callback.
----@param callback CallbackOnVehicleLoad the callback to bind to the setupMain callback.
----@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
-function Binder.bind.setupMain(callback, priority)
-	bindCallback(
-		"setupMain",
-		callback,
-		priority
-	)
-end
-
-
--- library name
-IslandRegistry = {}
-
-
---[[
-
-
-	Classes
-
-
-]]
-
----@class IslandRegistryData
----@field by_index table<integer, ISLAND>
----@field by_group_id table<integer, ISLAND>
----@field by_name table<string, ISLAND>
----@field by_faction table<FACTION, table<integer, ISLAND>>
----@field by_land_access table<string, table<integer, ISLAND>>
-
---[[
-
-
-	Constants
-
-
-]]
-
--- Put after the islands are initialized
-ISLAND_REGISTRY_SETUP_MAIN_PRIORITY = ISLAND_SETUP_MAIN_PRIORITY + 1
-
---[[
-
-
-	Variables
-
-
-]]
-
---- @type IslandRegistryData
-IslandRegistry.data = {
-	by_index = {},
-	by_group_id = {},
-	by_name = {},
-	by_faction = {},
-	by_land_access = {}
-}
-
---- @type boolean If the registry has been built
-IslandRegistry.ready = false
-
---[[
-
-
-	Functions
-
-
-]]
-
---- Registers the island in the registry, allowing it to be looked by its index, flag vehicle group id, name, and faction.
---- Also adds the island to the island spatial grid for spatial queries involving islands.
---- @param island ISLAND
-function IslandRegistry.registerIsland(island)
-	if not island then
-		return
-	end
-
-	IslandRegistry.data.by_index[island.index] = island
-
-	if island.flag_vehicle and island.flag_vehicle.group_id then
-		IslandRegistry.data.by_group_id[island.flag_vehicle.group_id] = island
-	end
-
-	IslandRegistry.data.by_name[string.friendly(island.name or "")] = island
-
-	IslandRegistry.data.by_faction[island.faction] = IslandRegistry.data.by_faction[island.faction] or {}
-	IslandRegistry.data.by_faction[island.faction][island.index] = island
-
-	local land_access = Tags.getValue(island.tags, "land_access", true) or "none"
-	IslandRegistry.data.by_land_access[land_access] = IslandRegistry.data.by_land_access[land_access] or {}
-	IslandRegistry.data.by_land_access[land_access][island.index] = island
-
-	-- Also register it in the spatial hash grid
-	if not island_grid.frozen then
-		---@diagnostic disable-next-line: param-type-mismatch
-		SpatialGrid.add(island_grid, island.index, island.transform[13], island.transform[15])
-	else
-		d.print("(IslandRegistry.registerIsland) island_grid is frozen!", true, 1)
-	end
-end
-
---- Changes a islands faction
---- @param island ISLAND
---- @param new_faction FACTION
-function IslandRegistry.setFaction(island, new_faction)
-	if not island then
-		return
-	end
-
-	if island.faction == new_faction then
-		return
-	end
-
-	if IslandRegistry.data.by_faction[island.faction] then
-		IslandRegistry.data.by_faction[island.faction][island.index] = nil
-	end
-
-	island.faction = new_faction
-
-	IslandRegistry.data.by_faction[new_faction] = IslandRegistry.data.by_faction[new_faction] or {}
-	IslandRegistry.data.by_faction[new_faction][island.index] = island
-end
-
---- Rebuilds the entire registry from the island data in g_savedata
-function IslandRegistry.rebuild()
-	start_time = s.getTimeMillisec()
-	IslandRegistry.data = {
-		by_index = {},
-		by_group_id = {},
-		by_name = {},
-		by_faction = {},
-		by_land_access = {}
-	}
-	island_grid = SpatialGrid.new(island_grid.cell_size) -- Reset the grid
-
-	if g_savedata.ai_base_island then
-		IslandRegistry.registerIsland(g_savedata.ai_base_island)
-	end
-
-	if g_savedata.player_base_island then
-		IslandRegistry.registerIsland(g_savedata.player_base_island)
-	end
-
-	for _, island in pairs(g_savedata.islands or {}) do
-		IslandRegistry.registerIsland(island)
-	end
-
-	island_grid = island_grid:freeze()
-
-	IslandRegistry.ready = true
-end
-
---- If the registry hasn't been built yet, builds it. Otherwise does nothing
-function IslandRegistry.ensureReady()
-	if not IslandRegistry.ready then
-		IslandRegistry.rebuild()
-	end
-end
-
---- @param group_id integer
---- @return ISLAND|nil island
-function IslandRegistry.getByGroupID(group_id)
-	IslandRegistry.ensureReady()
-	return IslandRegistry.data.by_group_id[group_id]
-end
-
---- @param island_index integer
---- @return ISLAND|nil island
-function IslandRegistry.getByIndex(island_index)
-	IslandRegistry.ensureReady()
-	return IslandRegistry.data.by_index[island_index]
-end
-
---- @param island_name string
---- @return ISLAND|nil island
-function IslandRegistry.getByName(island_name)
-	IslandRegistry.ensureReady()
-	return IslandRegistry.data.by_name[string.friendly(island_name or "")]
-end
-
---- Returns a table of all islands controlled by a faction
---- Note: this returns a reference to the actual data. If you need to modify it, make a copy first
---- @param faction FACTION
---- @return table<integer, ISLAND>
-function IslandRegistry.getFactionMap(faction)
-	IslandRegistry.ensureReady()
-	return IslandRegistry.data.by_faction[faction] or {}
-end
-
---- Returns a table of all islands with the specified land access
---- Note: this returns a reference to the actual data. If you need to modify it, make a copy first
---- @param land_access string
---- @return table<integer, ISLAND>
-function IslandRegistry.getLandAccessMap(land_access)
-	IslandRegistry.ensureReady()
-	return IslandRegistry.data.by_land_access[land_access] or {}
-end
-
--- Bind rebuild to setupMain
-Binder.bind.setupMain(IslandRegistry.rebuild, ISLAND_REGISTRY_SETUP_MAIN_PRIORITY)
-
 
 -- library name
 Island = {}
@@ -9721,7 +8807,343 @@ function safe_server.getVehicleComponents(vehicle_id)
 
 	return loaded_vehicle_data, is_success
 end
- -- safer functions for the server functions. -- functions for script/world setup. -- spatial grid functions
+ -- safer functions for the server functions. -- functions for script/world setup.
+--[[
+spatialGrid.lua
+
+Uses Spatial Hashing to add objects to buckets on a 2d grid
+Allows for fast lookup of nearby objects by only checking the buckets near the query point instead of every object in the world
+]]
+
+
+--[[
+
+
+    Library Setup
+
+
+]]
+
+-- required libraries
+
+SpatialGrid = {}
+
+--[[
+
+
+	Variables
+   
+
+]]
+
+--[[
+
+
+	Classes
+
+
+]]
+
+---@alias spatialObjectID number A unique identifier for an object in the spatial grid. (For example a vehicle ID)
+
+---@alias cellKey any
+---@alias cellContents table<spatialObjectID, {obj: spatialObjectID, x: number, z: number}>
+
+--[[
+
+
+	Functions         
+
+
+]]
+
+--- Creates a new spatial grid
+--- @param cell_size number The size of each grid cell. Should be roughly the size of your typical query radius.
+function SpatialGrid.new(cell_size)
+    ---@class SpatialGrid
+    local newGrid = {
+        cell_size = cell_size or 500,
+        cells = {}, ---@type table<cellKey, cellContents> The grid cells
+        object_keys = {}, ---@type table<spatialObjectID, cellKey>
+        stats = {count = 0, cells_used = 0},
+        frozen = false,  -- Whether the grid is frozen (no more modifications allowed)
+        add = SpatialGrid.add,
+        remove = SpatialGrid.remove,
+        update = SpatialGrid.update,
+        isObjectInGrid = SpatialGrid.isObjectInGrid,
+        clean = SpatialGrid.clean,
+        freeze = SpatialGrid.freeze,
+        query = SpatialGrid.query
+    }
+    return newGrid
+end
+
+--- Freezes the grid, preventing you from making any more changes to it.
+--- Reduces the grids memory use by removing unneeded data, and allows for query optimizations.
+--- Frozen grids can not be unfrozen
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @return FrozenSpatialGrid frozenGrid The frozen grid
+function SpatialGrid.freeze(grid)
+    -- Remove all empty cells
+    SpatialGrid.clean(grid)
+    
+    -- Since the grid is no longer going to change, we can change the structure to make
+    -- querying faster. This changes it to a row/column system so querys can skip rows/columns
+    -- which are empty
+    local cell_size = grid.cell_size
+    local rows = {} ---@type table<integer, table<integer, cellContents>>
+    local rowRanges = {} ---@type table<integer, {minCx: integer, maxCx: integer}>
+    for _, cell in pairs(grid.cells) do
+        -- Convert the cell contents to a list so querying doesn't need to use pairs
+        local listCell = {}
+        for obj, pos in pairs(cell) do
+            table.insert(listCell, {obj=obj, x=pos.x, z=pos.z})
+        end
+
+        -- Calculate the cell's row and column
+        sampleObject = listCell[1]
+        local cx = math.floor(sampleObject.x / cell_size)
+        local cz = math.floor(sampleObject.z / cell_size)
+
+        -- Add the cell to its row
+        local row = rows[cz]
+        if not row then
+            row = {}
+            rows[cz] = row
+            rowRanges[cz] = {minCx = cx, maxCx = cx}
+        else
+            -- Used in querys to skip rows which don't have any cells in the query range
+            rowRanges[cz] = {minCx = math.min(rowRanges[cz].minCx, cx), maxCx = math.max(rowRanges[cz].maxCx, cx)}
+        end
+
+        row[cx] = listCell
+    end
+
+    ---@class FrozenSpatialGrid
+    local frozenGrid = {
+        cell_size = cell_size,
+        rows = rows,
+        rowRanges = rowRanges,
+        frozen = true,
+        query = SpatialGrid.queryFrozen
+    }
+    return frozenGrid
+end
+
+---  Generates a unique integer key given cell coordinates
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @param x number X coordinate
+--- @param z number Z coordinate
+--- @return cellKey key The unique cell key
+function SpatialGrid.getCellKey(grid, x, z)
+    local c_x = math.floor(x / grid.cell_size)
+    local c_z = math.floor(z / grid.cell_size)
+    
+    return c_x + (c_z * 1000000)
+end
+
+--- Adds an object to the grid
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @param obj spatialObjectID The object to track (must be valid table key)
+--- @param x number X coordinate
+--- @param z number Z coordinate
+function SpatialGrid.add(grid, obj, x, z)
+    if grid.object_keys[obj] then
+        -- If its already in the grid, update instead
+        return SpatialGrid.update(grid, obj, x, z)
+    end
+
+    local key = SpatialGrid.getCellKey(grid, x, z)
+    local cell = grid.cells[key]
+    if not cell then
+        -- Create new cell if it doesn't exist
+        cell = {}
+        grid.cells[key] = cell
+        grid.stats.cells_used = grid.stats.cells_used + 1
+    end
+    
+    -- Store position for fast distance checks later
+    cell[obj] = {obj=obj, x = x, z = z}
+    grid.object_keys[obj] = key
+    grid.stats.count = grid.stats.count + 1
+end
+
+--- Removes an object from the grid
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @param obj spatialObjectID The object to remove
+function SpatialGrid.remove(grid, obj)
+    local key = grid.object_keys[obj]
+    if key then
+        local cell = grid.cells[key]
+        if cell then
+            cell[obj] = nil
+        end
+        grid.object_keys[obj] = nil
+        grid.stats.count = grid.stats.count - 1
+    end
+end
+
+--- Updates an object's position in the grid
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @param obj spatialObjectID The object to update
+--- @param x number Objects X coordinate
+--- @param z number Objects Z coordinate
+function SpatialGrid.update(grid, obj, x, z)
+    local old_key = grid.object_keys[obj]
+    local new_key = SpatialGrid.getCellKey(grid, x, z)
+
+    if not old_key then
+        -- Object not in grid yet, add it
+        return SpatialGrid.add(grid, obj, x, z)
+    end
+
+    -- Check if the object has moved to a new cell
+    if old_key ~= new_key then
+        -- Remove from the old cell
+        if old_key then
+            local old_cell = grid.cells[old_key]
+            if old_cell then old_cell[obj] = nil end
+        end
+        
+        -- Get the new cell. Create it if it doesn't exist
+        local new_cell = grid.cells[new_key]
+        if not new_cell then
+            new_cell = {}
+            grid.cells[new_key] = new_cell
+            grid.stats.cells_used = grid.stats.cells_used + 1
+        end
+        
+        -- Add to new cell
+        new_cell[obj] = {obj=obj, x = x, z = z}
+        grid.object_keys[obj] = new_key
+    else
+        -- Same cell, just update position data
+        local cell = grid.cells[old_key]
+        cell[obj].x = x
+        cell[obj].z = z
+    end
+end
+
+--- Checks if an object is in the grid already
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @param obj spatialObjectID The object to check
+--- @return boolean inGrid True if the object is in the grid, false otherwise
+function SpatialGrid.isObjectInGrid(grid, obj)
+    return grid.object_keys[obj] ~= nil
+end
+
+--- Sets all empty cells to nil to reduce memory usage if needed
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @return integer totalCleaned The total amount of cells cleaned
+function SpatialGrid.clean(grid)
+    local totalCleaned = 0
+
+    for cellKey, cellContents in pairs(grid.cells) do
+        if next(cellContents) == nil then
+            grid.cells[cellKey] = nil
+            totalCleaned = totalCleaned + 1
+        end
+    end
+    grid.stats.cells_used = math.max(0, grid.stats.cells_used - totalCleaned)
+    
+    return totalCleaned
+end
+
+--- Queries the grid for objects within a radius
+--- @param grid SpatialGrid The grid created using SpatialGrid.new()
+--- @param x number Center X
+--- @param z number Center Z
+--- @param radius number Radius to search
+--- @return spatialObjectID[] Found of objects found
+function SpatialGrid.query(grid, x, z, radius)
+    local result = {}
+    local result_count = 1
+    local cell_size = grid.cell_size
+    
+    -- Calculate bounds of the cells to check
+    local min_x = math.floor((x - radius) / cell_size)
+    local max_x = math.floor((x + radius) / cell_size)
+    local min_z = math.floor((z - radius) / cell_size)
+    local max_z = math.floor((z + radius) / cell_size)
+    
+    local r_sq = radius * radius
+    
+    -- Iterate the cells
+    for cz = min_z, max_z do
+        local z_offset = cz * 1000000
+        for cx = min_x, max_x do
+            local cell = grid.cells[cx + z_offset]
+            
+            if cell then
+                for obj, pos in pairs(cell) do
+                    -- Check exact distance of each item
+                    local dx = x - pos.x
+                    local dz = z - pos.z
+                    if (dx*dx + dz*dz) <= r_sq then
+                        result[result_count] = obj
+                        result_count = result_count + 1
+                    end
+                end
+            end
+        end
+    end
+    
+    return result
+end
+
+--- Queries the grid for objects within a radius. Instead of looking up cell keys, this uses rows/columns
+--- to only check cells which exist.
+--- @param grid FrozenSpatialGrid The grid created using SpatialGrid.new()
+--- @param x number Center X
+--- @param z number Center Z
+--- @param radius number Radius to search
+--- @return spatialObjectID[] Found of objects found
+function SpatialGrid.queryFrozen(grid, x, z, radius)
+    local result = {}
+    local result_count = 1
+    local cell_size = grid.cell_size
+    local rows = grid.rows
+    local rowRanges = grid.rowRanges
+    
+    -- Calculate bounds of the cells to check
+    local min_x = math.floor((x - radius) / cell_size)
+    local max_x = math.floor((x + radius) / cell_size)
+    local min_z = math.floor((z - radius) / cell_size)
+    local max_z = math.floor((z + radius) / cell_size)
+    
+    local r_sq = radius * radius
+    
+    -- Iterate the cells
+    for cz = min_z, max_z do
+        local rowRange = rowRanges[cz]
+        if rowRange then
+            -- Skip if its cx range doesn't intersect with the query range
+            if rowRange.maxCx < min_x or rowRange.minCx > max_x then
+                goto skipRow
+            end
+
+            -- Loop through every cell in the row which is within the query range
+            local row = rows[cz]
+            for cx, cell in pairs(row) do
+                if cx >= min_x and cx <= max_x then
+                    for i=1, #cell do
+                        local obj_data = cell[i]
+                        local dx = x - obj_data.x
+                        local dz = z - obj_data.z
+                        if (dx * dx + dz * dz) <= r_sq then
+                            result[result_count] = obj_data.obj
+                            result_count = result_count + 1
+                        end
+                    end
+                end
+            end
+            ::skipRow::
+        end
+    end
+    
+    return result
+end
+ -- spatial grid functions
 
 ai_vehicles_grid = SpatialGrid.new(1000)
 player_vehicles_grid = SpatialGrid.new(1000)
@@ -13702,7 +13124,585 @@ Flag.registerNumberFlag(
 	0,
 	1
 )
- -- controls the payroll system for how many islands you hold. -- optimized island lookups and handles the island_grid
+ -- controls the payroll system for how many islands you hold.
+--[[
+
+
+	Library Setup
+
+
+]]
+--[[
+	
+Copyright 2025 Liam Matthews
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+]]
+
+-- Library Version 0.0.2
+
+--[[
+
+
+	Library Setup
+
+
+]]
+
+-- required libraries
+
+---@diagnostic disable:duplicate-doc-field
+---@diagnostic disable:duplicate-doc-alias
+---@diagnostic disable:duplicate-set-field
+
+--[[ 
+	Allows a library to easily bind to a callback, so it doesn't have to inject itself into each callback.
+]]
+
+-- library name
+Binder = {
+	bind = {}
+}
+
+--[[
+
+
+	Classes
+
+
+]]
+
+-- onGroupSpawn
+---@alias CallbackOnGroupSpawn fun(group_id: integer, peer_id: integer, x: number, y: number, z: number, group_cost: number)
+
+-- onVehicleLoad
+---@alias CallbackOnVehicleLoad fun(vehicle_id: integer)
+
+-- onVehicleUnload
+---@alias CallbackOnVehicleUnload fun(vehicle_id: integer)
+
+-- onObjectLoad
+---@alias CallbackOnObjectLoad fun(object_id: integer)
+
+-- setupMain
+---@alias CallbackSetupMain fun(is_world_create: boolean)
+
+---@alias Callback
+---| CallbackOnGroupSpawn
+---| CallbackOnVehicleLoad
+---| CallbackOnVehicleUnload
+---| CallbackOnObjectLoad
+---| CallbackSetupMain
+
+---@class BindedCallback
+---@field callback Callback the callback to call
+---@field priority number the priority of the callback.
+
+--[[
+
+
+	Variables
+
+
+]]
+
+---@type table<string, table<integer, BindedCallback>>
+binded_callbacks = {
+	onGroupSpawn = {},
+	onVehicleLoad = {},
+	onVehicleUnload = {},
+	onObjectLoad = {},
+	setupMain = {}
+}
+
+--[[
+
+
+	Functions
+
+
+]]
+
+---@param callback_name string the name of the callback to bind to.
+---@param callback Callback the callback to bind to the callback.
+---@param priority integer? the priority of the callback, higher priority callbacks are called first.
+local function bindCallback(callback_name, callback, priority)
+
+	-- default the priority to 0 if not specified.
+	priority = priority or 0
+
+	-- get the list of binds for this callback.
+	local binds = binded_callbacks[callback_name]
+
+	-- check if the list exists
+	if not binds then
+		-- print an error
+		d.print(("The callback %s is not a valid callback."):format(callback_name), true, 1)
+		return
+	end
+
+	-- define the index to insert the callback at.
+	local insert_index = 1
+
+	-- find the index to insert the callback at (sorted by priority, goes to behind an existing callback if they share the same priority.)
+	for bind_index = 1, #binds do
+		-- if the priority is higher than the current bind's priority, break.
+		if binds[bind_index].priority > priority then
+			break
+		end
+
+		-- otherwise, set insert index to above this one.
+		insert_index = bind_index + 1
+	end
+
+	-- insert the callback at the insert index.
+	table.insert(binds, insert_index, 
+		{
+			callback = callback,
+			priority = priority
+		}
+	)
+end
+
+--[[
+
+	onGroupSpawn
+
+]]
+
+--[[
+	Inject.
+]]
+
+---@diagnostic disable-next-line: undefined-global
+old_onGroupSpawn = onGroupSpawn
+
+---@private
+function onGroupSpawn(...)
+
+	-- get the list of binds for this callback.
+	local binds = binded_callbacks.onGroupSpawn
+
+	-- check if the list exists
+	if not binds then
+		return
+	end
+
+	-- call each callback in order
+	for bind_index = 1, #binds do
+		binds[bind_index].callback(...)
+	end
+
+	-- call old callback, if it exists
+	if old_onGroupSpawn then
+		old_onGroupSpawn(...)
+	end
+end
+
+--[[
+	Create bind function
+]]
+
+--- Function for binding to a the onGroupSpawn callback.
+---@param callback CallbackOnGroupSpawn the callback to bind to the onGroupSpawn callback.
+---@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
+function Binder.bind.onGroupSpawn(callback, priority)
+	bindCallback(
+		"onGroupSpawn",
+		callback,
+		priority
+	)
+end
+
+--[[
+
+	onVehicleLoad
+
+]]
+
+--[[
+	Inject.
+]]
+
+old_onVehicleLoad = onVehicleLoad
+
+---@private
+function onVehicleLoad(...)
+
+	-- get the list of binds for this callback.
+	local binds = binded_callbacks.onVehicleLoad
+
+	-- check if the list exists
+	if not binds then
+		return
+	end
+
+	-- call each callback in order
+	for bind_index = 1, #binds do
+		binds[bind_index].callback(...)
+	end
+
+	-- call old callback, if it exists
+	if old_onVehicleLoad then
+		old_onVehicleLoad(...)
+	end
+end
+
+
+--[[
+	Create bind function
+]]
+
+--- Function for binding to a the onVehicleLoad callback.
+---@param callback CallbackOnVehicleLoad the callback to bind to the onVehicleLoad callback.
+---@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
+function Binder.bind.onVehicleLoad(callback, priority)
+	bindCallback(
+		"onVehicleLoad",
+		callback,
+		priority
+	)
+end
+
+--[[
+
+	onVehicleUnload
+
+]]
+
+--[[
+	Inject.
+]]
+
+old_onVehicleUnload = onVehicleUnload
+
+---@private
+function onVehicleUnload(...)
+
+	-- get the list of binds for this callback.
+	local binds = binded_callbacks.onVehicleUnload
+
+	-- check if the list exists
+	if not binds then
+		return
+	end
+
+	-- call each callback in order
+	for bind_index = 1, #binds do
+		binds[bind_index].callback(...)
+	end
+
+	-- call old callback, if it exists
+	if old_onVehicleUnload then
+		old_onVehicleUnload(...)
+	end
+end
+
+--[[
+	Create bind function
+]]
+
+--- Function for binding to a the onVehicleUnload callback.
+---@param callback CallbackOnVehicleLoad the callback to bind to the onVehicleUnload callback.
+---@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
+function Binder.bind.onVehicleUnload(callback, priority)
+	bindCallback(
+		"onVehicleUnload",
+		callback,
+		priority
+	)
+end
+
+
+--[[
+
+	onObjectLoad
+
+]]
+
+--[[
+	Inject.
+]]
+
+old_onObjectLoad = onObjectLoad
+
+---@private
+function onObjectLoad(...)
+
+	-- get the list of binds for this callback.
+	local binds = binded_callbacks.onObjectLoad
+
+	-- check if the list exists
+	if not binds then
+		return
+	end
+
+	-- call each callback in order
+	for bind_index = 1, #binds do
+		binds[bind_index].callback(...)
+	end
+
+	-- call old callback, if it exists
+	if old_onObjectLoad then
+		old_onObjectLoad(...)
+	end
+end
+
+--[[
+	Create bind function
+]]
+
+--- Function for binding to a the onObjectLoad callback.
+---@param callback CallbackOnObjectLoad the callback to bind to the onObjectLoad callback.
+---@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
+function Binder.bind.onObjectLoad(callback, priority)
+	bindCallback(
+		"onObjectLoad",
+		callback,
+		priority
+	)
+end
+
+--[[
+
+	setupMain
+
+]]
+
+---@private
+function bindedSetupMain(...)
+	-- get the list of binds for this callback.
+	local binds = binded_callbacks.setupMain
+
+	-- check if the list exists
+	if not binds then
+		return
+	end
+
+	d.print(string.fromTable(binds))
+
+	-- call each callback in order
+	for bind_index = 1, #binds do
+		binds[bind_index].callback(...)
+	end
+end
+
+--[[
+	Create bind function
+]]
+
+--- Function for binding to a the setupMain callback.
+---@param callback CallbackOnVehicleLoad the callback to bind to the setupMain callback.
+---@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
+function Binder.bind.setupMain(callback, priority)
+	bindCallback(
+		"setupMain",
+		callback,
+		priority
+	)
+end
+
+-- library name
+IslandRegistry = {}
+
+
+--[[
+
+
+	Classes
+
+
+]]
+
+---@class IslandRegistryData
+---@field by_index table<integer, ISLAND>
+---@field by_group_id table<integer, ISLAND>
+---@field by_name table<string, ISLAND>
+---@field by_faction table<FACTION, table<integer, ISLAND>>
+---@field by_land_access table<string, table<integer, ISLAND>>
+
+--[[
+
+
+	Constants
+
+
+]]
+
+-- Put after the islands are initialized
+ISLAND_REGISTRY_SETUP_MAIN_PRIORITY = ISLAND_SETUP_MAIN_PRIORITY + 1
+
+--[[
+
+
+	Variables
+
+
+]]
+
+--- @type IslandRegistryData
+IslandRegistry.data = {
+	by_index = {},
+	by_group_id = {},
+	by_name = {},
+	by_faction = {},
+	by_land_access = {}
+}
+
+--- @type boolean If the registry has been built
+IslandRegistry.ready = false
+
+--[[
+
+
+	Functions
+
+
+]]
+
+--- Registers the island in the registry, allowing it to be looked by its index, flag vehicle group id, name, and faction.
+--- Also adds the island to the island spatial grid for spatial queries involving islands.
+--- @param island ISLAND
+function IslandRegistry.registerIsland(island)
+	if not island then
+		return
+	end
+
+	IslandRegistry.data.by_index[island.index] = island
+
+	if island.flag_vehicle and island.flag_vehicle.group_id then
+		IslandRegistry.data.by_group_id[island.flag_vehicle.group_id] = island
+	end
+
+	IslandRegistry.data.by_name[string.friendly(island.name or "")] = island
+
+	IslandRegistry.data.by_faction[island.faction] = IslandRegistry.data.by_faction[island.faction] or {}
+	IslandRegistry.data.by_faction[island.faction][island.index] = island
+
+	local land_access = Tags.getValue(island.tags, "land_access", true) or "none"
+	IslandRegistry.data.by_land_access[land_access] = IslandRegistry.data.by_land_access[land_access] or {}
+	IslandRegistry.data.by_land_access[land_access][island.index] = island
+
+	-- Also register it in the spatial hash grid
+	if not island_grid.frozen then
+		---@diagnostic disable-next-line: param-type-mismatch
+		SpatialGrid.add(island_grid, island.index, island.transform[13], island.transform[15])
+	else
+		d.print("(IslandRegistry.registerIsland) island_grid is frozen!", true, 1)
+	end
+end
+
+--- Changes a islands faction
+--- @param island ISLAND
+--- @param new_faction FACTION
+function IslandRegistry.setFaction(island, new_faction)
+	if not island then
+		return
+	end
+
+	if island.faction == new_faction then
+		return
+	end
+
+	if IslandRegistry.data.by_faction[island.faction] then
+		IslandRegistry.data.by_faction[island.faction][island.index] = nil
+	end
+
+	island.faction = new_faction
+
+	IslandRegistry.data.by_faction[new_faction] = IslandRegistry.data.by_faction[new_faction] or {}
+	IslandRegistry.data.by_faction[new_faction][island.index] = island
+end
+
+--- Rebuilds the entire registry from the island data in g_savedata
+function IslandRegistry.rebuild()
+	start_time = s.getTimeMillisec()
+	IslandRegistry.data = {
+		by_index = {},
+		by_group_id = {},
+		by_name = {},
+		by_faction = {},
+		by_land_access = {}
+	}
+	island_grid = SpatialGrid.new(island_grid.cell_size) -- Reset the grid
+
+	if g_savedata.ai_base_island then
+		IslandRegistry.registerIsland(g_savedata.ai_base_island)
+	end
+
+	if g_savedata.player_base_island then
+		IslandRegistry.registerIsland(g_savedata.player_base_island)
+	end
+
+	for _, island in pairs(g_savedata.islands or {}) do
+		IslandRegistry.registerIsland(island)
+	end
+
+	island_grid = island_grid:freeze()
+
+	IslandRegistry.ready = true
+end
+
+--- If the registry hasn't been built yet, builds it. Otherwise does nothing
+function IslandRegistry.ensureReady()
+	if not IslandRegistry.ready then
+		IslandRegistry.rebuild()
+	end
+end
+
+--- @param group_id integer
+--- @return ISLAND|nil island
+function IslandRegistry.getByGroupID(group_id)
+	IslandRegistry.ensureReady()
+	return IslandRegistry.data.by_group_id[group_id]
+end
+
+--- @param island_index integer
+--- @return ISLAND|nil island
+function IslandRegistry.getByIndex(island_index)
+	IslandRegistry.ensureReady()
+	return IslandRegistry.data.by_index[island_index]
+end
+
+--- @param island_name string
+--- @return ISLAND|nil island
+function IslandRegistry.getByName(island_name)
+	IslandRegistry.ensureReady()
+	return IslandRegistry.data.by_name[string.friendly(island_name or "")]
+end
+
+--- Returns a table of all islands controlled by a faction
+--- Note: this returns a reference to the actual data. If you need to modify it, make a copy first
+--- @param faction FACTION
+--- @return table<integer, ISLAND>
+function IslandRegistry.getFactionMap(faction)
+	IslandRegistry.ensureReady()
+	return IslandRegistry.data.by_faction[faction] or {}
+end
+
+--- Returns a table of all islands with the specified land access
+--- Note: this returns a reference to the actual data. If you need to modify it, make a copy first
+--- @param land_access string
+--- @return table<integer, ISLAND>
+function IslandRegistry.getLandAccessMap(land_access)
+	IslandRegistry.ensureReady()
+	return IslandRegistry.data.by_land_access[land_access] or {}
+end
+
+-- Bind rebuild to setupMain
+Binder.bind.setupMain(IslandRegistry.rebuild, ISLAND_REGISTRY_SETUP_MAIN_PRIORITY)
+ -- optimized island lookups and handles the island_grid
 --[[
 	Capture System - Manages island capture progress, faction changes, and associated events.
 	Provides clean separation of capture mechanics from UI/tick logic.

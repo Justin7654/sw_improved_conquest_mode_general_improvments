@@ -9,8 +9,9 @@
 require("libraries.addon.script.debugging")
 require("libraries.addon.spatial.spatialGrid")
 require("libraries.addon.components.tags")
-require("libraries.utils.string")
 require("libraries.addon.callbacks.binder.binder")
+require("libraries.icm.islands.island")
+require("libraries.utils.string")
 
 -- library name
 IslandRegistry = {}

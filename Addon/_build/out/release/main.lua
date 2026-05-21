@@ -168,12 +168,6 @@ ai_training = {
 
 scout_requirement = time.minute*40
 
-capture_speeds = {
-	1,
-	1.5,
-	1.75
-}
-
 g_holding_pattern = {
 	{
 		x=500,
@@ -9371,6 +9365,584 @@ end
 ]]
 
 -- required libraries
+--[[
+
+
+	Library Setup
+
+
+]]
+--[[
+	
+Copyright 2025 Liam Matthews
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+]]
+
+-- Library Version 0.0.2
+
+--[[
+
+
+	Library Setup
+
+
+]]
+
+-- required libraries
+
+---@diagnostic disable:duplicate-doc-field
+---@diagnostic disable:duplicate-doc-alias
+---@diagnostic disable:duplicate-set-field
+
+--[[ 
+	Allows a library to easily bind to a callback, so it doesn't have to inject itself into each callback.
+]]
+
+-- library name
+Binder = {
+	bind = {}
+}
+
+--[[
+
+
+	Classes
+
+
+]]
+
+-- onGroupSpawn
+---@alias CallbackOnGroupSpawn fun(group_id: integer, peer_id: integer, x: number, y: number, z: number, group_cost: number)
+
+-- onVehicleLoad
+---@alias CallbackOnVehicleLoad fun(vehicle_id: integer)
+
+-- onVehicleUnload
+---@alias CallbackOnVehicleUnload fun(vehicle_id: integer)
+
+-- onObjectLoad
+---@alias CallbackOnObjectLoad fun(object_id: integer)
+
+-- setupMain
+---@alias CallbackSetupMain fun(is_world_create: boolean)
+
+---@alias Callback
+---| CallbackOnGroupSpawn
+---| CallbackOnVehicleLoad
+---| CallbackOnVehicleUnload
+---| CallbackOnObjectLoad
+---| CallbackSetupMain
+
+---@class BindedCallback
+---@field callback Callback the callback to call
+---@field priority number the priority of the callback.
+
+--[[
+
+
+	Variables
+
+
+]]
+
+---@type table<string, table<integer, BindedCallback>>
+binded_callbacks = {
+	onGroupSpawn = {},
+	onVehicleLoad = {},
+	onVehicleUnload = {},
+	onObjectLoad = {},
+	setupMain = {}
+}
+
+--[[
+
+
+	Functions
+
+
+]]
+
+---@param callback_name string the name of the callback to bind to.
+---@param callback Callback the callback to bind to the callback.
+---@param priority integer? the priority of the callback, higher priority callbacks are called first.
+local function bindCallback(callback_name, callback, priority)
+
+	-- default the priority to 0 if not specified.
+	priority = priority or 0
+
+	-- get the list of binds for this callback.
+	local binds = binded_callbacks[callback_name]
+
+	-- check if the list exists
+	if not binds then
+		-- print an error
+		d.print(("The callback %s is not a valid callback."):format(callback_name), true, 1)
+		return
+	end
+
+	-- define the index to insert the callback at.
+	local insert_index = 1
+
+	-- find the index to insert the callback at (sorted by priority, goes to behind an existing callback if they share the same priority.)
+	for bind_index = 1, #binds do
+		-- if the priority is higher than the current bind's priority, break.
+		if binds[bind_index].priority > priority then
+			break
+		end
+
+		-- otherwise, set insert index to above this one.
+		insert_index = bind_index + 1
+	end
+
+	-- insert the callback at the insert index.
+	table.insert(binds, insert_index, 
+		{
+			callback = callback,
+			priority = priority
+		}
+	)
+end
+
+--[[
+
+	onGroupSpawn
+
+]]
+
+--[[
+	Inject.
+]]
+
+---@diagnostic disable-next-line: undefined-global
+old_onGroupSpawn = onGroupSpawn
+
+---@private
+function onGroupSpawn(...)
+
+	-- get the list of binds for this callback.
+	local binds = binded_callbacks.onGroupSpawn
+
+	-- check if the list exists
+	if not binds then
+		return
+	end
+
+	-- call each callback in order
+	for bind_index = 1, #binds do
+		binds[bind_index].callback(...)
+	end
+
+	-- call old callback, if it exists
+	if old_onGroupSpawn then
+		old_onGroupSpawn(...)
+	end
+end
+
+--[[
+	Create bind function
+]]
+
+--- Function for binding to a the onGroupSpawn callback.
+---@param callback CallbackOnGroupSpawn the callback to bind to the onGroupSpawn callback.
+---@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
+function Binder.bind.onGroupSpawn(callback, priority)
+	bindCallback(
+		"onGroupSpawn",
+		callback,
+		priority
+	)
+end
+
+--[[
+
+	onVehicleLoad
+
+]]
+
+--[[
+	Inject.
+]]
+
+old_onVehicleLoad = onVehicleLoad
+
+---@private
+function onVehicleLoad(...)
+
+	-- get the list of binds for this callback.
+	local binds = binded_callbacks.onVehicleLoad
+
+	-- check if the list exists
+	if not binds then
+		return
+	end
+
+	-- call each callback in order
+	for bind_index = 1, #binds do
+		binds[bind_index].callback(...)
+	end
+
+	-- call old callback, if it exists
+	if old_onVehicleLoad then
+		old_onVehicleLoad(...)
+	end
+end
+
+
+--[[
+	Create bind function
+]]
+
+--- Function for binding to a the onVehicleLoad callback.
+---@param callback CallbackOnVehicleLoad the callback to bind to the onVehicleLoad callback.
+---@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
+function Binder.bind.onVehicleLoad(callback, priority)
+	bindCallback(
+		"onVehicleLoad",
+		callback,
+		priority
+	)
+end
+
+--[[
+
+	onVehicleUnload
+
+]]
+
+--[[
+	Inject.
+]]
+
+old_onVehicleUnload = onVehicleUnload
+
+---@private
+function onVehicleUnload(...)
+
+	-- get the list of binds for this callback.
+	local binds = binded_callbacks.onVehicleUnload
+
+	-- check if the list exists
+	if not binds then
+		return
+	end
+
+	-- call each callback in order
+	for bind_index = 1, #binds do
+		binds[bind_index].callback(...)
+	end
+
+	-- call old callback, if it exists
+	if old_onVehicleUnload then
+		old_onVehicleUnload(...)
+	end
+end
+
+--[[
+	Create bind function
+]]
+
+--- Function for binding to a the onVehicleUnload callback.
+---@param callback CallbackOnVehicleLoad the callback to bind to the onVehicleUnload callback.
+---@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
+function Binder.bind.onVehicleUnload(callback, priority)
+	bindCallback(
+		"onVehicleUnload",
+		callback,
+		priority
+	)
+end
+
+
+--[[
+
+	onObjectLoad
+
+]]
+
+--[[
+	Inject.
+]]
+
+old_onObjectLoad = onObjectLoad
+
+---@private
+function onObjectLoad(...)
+
+	-- get the list of binds for this callback.
+	local binds = binded_callbacks.onObjectLoad
+
+	-- check if the list exists
+	if not binds then
+		return
+	end
+
+	-- call each callback in order
+	for bind_index = 1, #binds do
+		binds[bind_index].callback(...)
+	end
+
+	-- call old callback, if it exists
+	if old_onObjectLoad then
+		old_onObjectLoad(...)
+	end
+end
+
+--[[
+	Create bind function
+]]
+
+--- Function for binding to a the onObjectLoad callback.
+---@param callback CallbackOnObjectLoad the callback to bind to the onObjectLoad callback.
+---@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
+function Binder.bind.onObjectLoad(callback, priority)
+	bindCallback(
+		"onObjectLoad",
+		callback,
+		priority
+	)
+end
+
+--[[
+
+	setupMain
+
+]]
+
+---@private
+function bindedSetupMain(...)
+	-- get the list of binds for this callback.
+	local binds = binded_callbacks.setupMain
+
+	-- check if the list exists
+	if not binds then
+		return
+	end
+
+	d.print(string.fromTable(binds))
+
+	-- call each callback in order
+	for bind_index = 1, #binds do
+		binds[bind_index].callback(...)
+	end
+end
+
+--[[
+	Create bind function
+]]
+
+--- Function for binding to a the setupMain callback.
+---@param callback CallbackOnVehicleLoad the callback to bind to the setupMain callback.
+---@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
+function Binder.bind.setupMain(callback, priority)
+	bindCallback(
+		"setupMain",
+		callback,
+		priority
+	)
+end
+
+-- library name
+IslandRegistry = {}
+
+
+--[[
+
+
+	Classes
+
+
+]]
+
+---@class IslandRegistryData
+---@field by_index table<integer, ISLAND>
+---@field by_group_id table<integer, ISLAND>
+---@field by_name table<string, ISLAND>
+---@field by_faction table<FACTION, table<integer, ISLAND>>
+---@field by_land_access table<string, table<integer, ISLAND>>
+
+--[[
+
+
+	Constants
+
+
+]]
+
+-- Put after the islands are initialized
+ISLAND_REGISTRY_SETUP_MAIN_PRIORITY = ISLAND_SETUP_MAIN_PRIORITY + 1
+
+--[[
+
+
+	Variables
+
+
+]]
+
+--- @type IslandRegistryData
+IslandRegistry.data = {
+	by_index = {},
+	by_group_id = {},
+	by_name = {},
+	by_faction = {},
+	by_land_access = {}
+}
+
+--- @type boolean If the registry has been built
+IslandRegistry.ready = false
+
+--[[
+
+
+	Functions
+
+
+]]
+
+--- Registers the island in the registry, allowing it to be looked by its index, flag vehicle group id, name, and faction.
+--- Also adds the island to the island spatial grid for spatial queries involving islands.
+--- @param island ISLAND
+function IslandRegistry.registerIsland(island)
+	if not island then
+		return
+	end
+
+	IslandRegistry.data.by_index[island.index] = island
+
+	if island.flag_vehicle and island.flag_vehicle.group_id then
+		IslandRegistry.data.by_group_id[island.flag_vehicle.group_id] = island
+	end
+
+	IslandRegistry.data.by_name[string.friendly(island.name or "")] = island
+
+	IslandRegistry.data.by_faction[island.faction] = IslandRegistry.data.by_faction[island.faction] or {}
+	IslandRegistry.data.by_faction[island.faction][island.index] = island
+
+	local land_access = Tags.getValue(island.tags, "land_access", true) or "none"
+	IslandRegistry.data.by_land_access[land_access] = IslandRegistry.data.by_land_access[land_access] or {}
+	IslandRegistry.data.by_land_access[land_access][island.index] = island
+
+	-- Also register it in the spatial hash grid
+	if not island_grid.frozen then
+		---@diagnostic disable-next-line: param-type-mismatch
+		SpatialGrid.add(island_grid, island.index, island.transform[13], island.transform[15])
+	else
+		d.print("(IslandRegistry.registerIsland) island_grid is frozen!", true, 1)
+	end
+end
+
+--- Changes a islands faction
+--- @param island ISLAND
+--- @param new_faction FACTION
+function IslandRegistry.setFaction(island, new_faction)
+	if not island then
+		return
+	end
+
+	if island.faction == new_faction then
+		return
+	end
+
+	if IslandRegistry.data.by_faction[island.faction] then
+		IslandRegistry.data.by_faction[island.faction][island.index] = nil
+	end
+
+	island.faction = new_faction
+
+	IslandRegistry.data.by_faction[new_faction] = IslandRegistry.data.by_faction[new_faction] or {}
+	IslandRegistry.data.by_faction[new_faction][island.index] = island
+end
+
+--- Rebuilds the entire registry from the island data in g_savedata
+function IslandRegistry.rebuild()
+	start_time = s.getTimeMillisec()
+	IslandRegistry.data = {
+		by_index = {},
+		by_group_id = {},
+		by_name = {},
+		by_faction = {},
+		by_land_access = {}
+	}
+	island_grid = SpatialGrid.new(island_grid.cell_size) -- Reset the grid
+
+	if g_savedata.ai_base_island then
+		IslandRegistry.registerIsland(g_savedata.ai_base_island)
+	end
+
+	if g_savedata.player_base_island then
+		IslandRegistry.registerIsland(g_savedata.player_base_island)
+	end
+
+	for _, island in pairs(g_savedata.islands or {}) do
+		IslandRegistry.registerIsland(island)
+	end
+
+	island_grid = island_grid:freeze()
+
+	IslandRegistry.ready = true
+end
+
+--- If the registry hasn't been built yet, builds it. Otherwise does nothing
+function IslandRegistry.ensureReady()
+	if not IslandRegistry.ready then
+		IslandRegistry.rebuild()
+	end
+end
+
+--- @param group_id integer
+--- @return ISLAND|nil island
+function IslandRegistry.getByGroupID(group_id)
+	IslandRegistry.ensureReady()
+	return IslandRegistry.data.by_group_id[group_id]
+end
+
+--- @param island_index integer
+--- @return ISLAND|nil island
+function IslandRegistry.getByIndex(island_index)
+	IslandRegistry.ensureReady()
+	return IslandRegistry.data.by_index[island_index]
+end
+
+--- @param island_name string
+--- @return ISLAND|nil island
+function IslandRegistry.getByName(island_name)
+	IslandRegistry.ensureReady()
+	return IslandRegistry.data.by_name[string.friendly(island_name or "")]
+end
+
+--- Returns a table of all islands controlled by a faction
+--- Note: this returns a reference to the actual data. If you need to modify it, make a copy first
+--- @param faction FACTION
+--- @return table<integer, ISLAND>
+function IslandRegistry.getFactionMap(faction)
+	IslandRegistry.ensureReady()
+	return IslandRegistry.data.by_faction[faction] or {}
+end
+
+--- Returns a table of all islands with the specified land access
+--- Note: this returns a reference to the actual data. If you need to modify it, make a copy first
+--- @param land_access string
+--- @return table<integer, ISLAND>
+function IslandRegistry.getLandAccessMap(land_access)
+	IslandRegistry.ensureReady()
+	return IslandRegistry.data.by_land_access[land_access] or {}
+end
+
+-- Bind rebuild to setupMain
+Binder.bind.setupMain(IslandRegistry.rebuild, ISLAND_REGISTRY_SETUP_MAIN_PRIORITY)
+
 
 -- library name
 Objective = {}
@@ -9399,82 +9971,88 @@ Objective = {}
 
 ]]
 
+---Gets the scout progress of an island, and safely returns 0 if there is no scout data for some reason
+---Could probobly be moved to a island or scout library
+---@param island_name string
+---@return number scouted_amount
+local function getScoutProgress(island_name)
+	local scout_data = g_savedata.ai_knowledge.scout[island_name]
+	if not scout_data then
+		return 0
+	end
+
+	return scout_data.scouted or 0
+end
+
+---@param island ISLAND
 ---@param ignore_scouted boolean? true if you want to ignore islands that are already fully scouted
----@return table target_island returns the island which the ai should target
----@return table origin_island returns the island which the ai should attack from
+---@return boolean is_valid_target
+local function isValidAttackTarget(island, ignore_scouted)
+	if island.faction == ISLAND.FACTION.AI then
+		return false
+	end
+
+	if ignore_scouted then
+		if getScoutProgress(island.name) >= scout_requirement then
+			return false
+		end
+	end
+
+	return true
+end
+
+---@param origin_island ISLAND The island the attack would originate from
+---@param target_island ISLAND The potential target island being evaluated
+---@return number weighted_distance A score representing how desirable this target is, lower is more desirable
+local function getAttackScore(origin_island, target_island)
+	local distance = m.xzDistance(origin_island.transform, target_island.transform)
+
+	if target_island.faction == ISLAND.FACTION.PLAYER then
+		return distance / 1.5
+	end
+
+	return distance
+end
+
+---@param origin_island ISLAND The island the attack would originate from
+---@param current_target ISLAND? The current best target found, or nil if none. Allows the function to be used in a loop to find the best target across multiple origins
+---@param current_origin ISLAND? The origin of the current best target given. Only has an effect if current_target is not nil
+---@param current_best_score number? The score of the current best target. Only has an effect if current_target is not nil
+---@param ignore_scouted boolean? True if you want to ignore islands that are already fully scouted
+---@return ISLAND? target_island
+---@return ISLAND? origin_island
+---@return number? best_score
+local function selectBestTargetForOrigin(origin_island, current_target, current_origin, current_best_score, ignore_scouted)
+	for _, island in pairs(g_savedata.islands) do
+		if isValidAttackTarget(island, ignore_scouted) then
+			local attack_score = getAttackScore(origin_island, island)
+			if not current_target or attack_score < current_best_score then
+				current_target = island
+				current_origin = origin_island
+				current_best_score = attack_score
+			end
+		end
+	end
+
+	return current_target, current_origin, current_best_score
+end
+
+---@param ignore_scouted boolean? true if you want to ignore islands that are already fully scouted
+---@return ISLAND? target_island returns the island which the ai should target
+---@return ISLAND? origin_island returns the island which the ai should attack from
 function Objective.getIslandToAttack(ignore_scouted)
 	local origin_island = nil
 	local target_island = nil
 	local target_best_distance = nil
 
-	-- go through all non enemy owned islands
-	for _, island in pairs(g_savedata.islands) do
-		if island.faction ~= ISLAND.FACTION.AI then
-
-			-- go through all enemy owned islands, to check if we should attack from there
-			for _, ai_island in pairs(g_savedata.islands) do
-				if ai_island.faction == ISLAND.FACTION.AI or ignore_scouted and g_savedata.ai_knowledge.scout[island.name].scouted >= scout_requirement then
-					if not ignore_scouted or g_savedata.ai_knowledge.scout[island.name].scouted < scout_requirement then
-						if not target_island then
-							origin_island = ai_island
-							target_island = island
-							if island.faction == ISLAND.FACTION.PLAYER then
-								target_best_distance = m.xzDistance(ai_island.transform, island.transform)/1.5
-							else
-								target_best_distance = m.xzDistance(ai_island.transform, island.transform)
-							end
-						elseif island.faction == ISLAND.FACTION.PLAYER then -- if the player owns the island we are checking
-							if target_island.faction == ISLAND.FACTION.PLAYER and m.xzDistance(ai_island.transform, island.transform) < target_best_distance then -- if the player also owned the island that we detected was the best to attack
-								origin_island = ai_island
-								target_island = island
-								target_best_distance = m.xzDistance(ai_island.transform, island.transform)
-							elseif target_island.faction ~= ISLAND.FACTION.PLAYER and m.xzDistance(ai_island.transform, island.transform)/1.5 < target_best_distance then -- if the player does not own the best match for an attack target so far
-								origin_island = ai_island
-								target_island = island
-								target_best_distance = m.xzDistance(ai_island.transform, island.transform)/1.5
-							end
-						elseif island.faction ~= ISLAND.FACTION.PLAYER and m.xzDistance(ai_island.transform, island.transform) < target_best_distance then -- if the player does not own the island we are checking
-							origin_island = ai_island
-							target_island = island
-							target_best_distance = m.xzDistance(ai_island.transform, island.transform)
-						end
-					end
-				end
-			end
-		end
+	-- Pick the best target using all currently AI controlled islands as potential origins.
+	local ai_islands = IslandRegistry.getFactionMap("ai")
+	for _, ai_island in pairs(ai_islands) do
+		target_island, origin_island, target_best_distance = selectBestTargetForOrigin(ai_island, target_island, origin_island, target_best_distance, ignore_scouted)
 	end
 
-
-	if not target_island then
-		origin_island = g_savedata.ai_base_island
-		for _, island in pairs(g_savedata.islands) do
-			if island.faction ~= ISLAND.FACTION.AI or ignore_scouted and g_savedata.ai_knowledge.scout[island.name].scouted >= scout_requirement then
-				if not ignore_scouted or g_savedata.ai_knowledge.scout[island.name].scouted < scout_requirement then
-					if not target_island then
-						target_island = island
-						if island.faction == ISLAND.FACTION.PLAYER then
-							target_best_distance = m.xzDistance(origin_island.transform, island.transform)/1.5
-						else
-							target_best_distance = m.xzDistance(origin_island.transform, island.transform)
-						end
-					elseif island.faction == ISLAND.FACTION.PLAYER then
-						if target_island.faction == ISLAND.FACTION.PLAYER and m.xzDistance(origin_island.transform, island.transform) < target_best_distance then -- if the player also owned the island that we detected was the best to attack
-							target_island = island
-							target_best_distance = m.xzDistance(origin_island.transform, island.transform)
-						elseif target_island.faction ~= ISLAND.FACTION.PLAYER and m.xzDistance(origin_island.transform, island.transform)/1.5 < target_best_distance then -- if the player does not own the best match for an attack target so far
-							target_island = island
-							target_best_distance = m.xzDistance(origin_island.transform, island.transform)/1.5
-						end
-					elseif island.faction ~= ISLAND.FACTION.PLAYER and m.xzDistance(origin_island.transform, island.transform) < target_best_distance then -- if the player does not own the island we are checking
-						target_island = island
-						target_best_distance = m.xzDistance(origin_island.transform, island.transform)
-					end
-				end
-			end
-		end
-	end
 	return target_island, origin_island
-end
+end	
 --[[
 
 
@@ -13124,585 +13702,7 @@ Flag.registerNumberFlag(
 	0,
 	1
 )
- -- controls the payroll system for how many islands you hold.
---[[
-
-
-	Library Setup
-
-
-]]
---[[
-	
-Copyright 2025 Liam Matthews
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-	http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
-]]
-
--- Library Version 0.0.2
-
---[[
-
-
-	Library Setup
-
-
-]]
-
--- required libraries
-
----@diagnostic disable:duplicate-doc-field
----@diagnostic disable:duplicate-doc-alias
----@diagnostic disable:duplicate-set-field
-
---[[ 
-	Allows a library to easily bind to a callback, so it doesn't have to inject itself into each callback.
-]]
-
--- library name
-Binder = {
-	bind = {}
-}
-
---[[
-
-
-	Classes
-
-
-]]
-
--- onGroupSpawn
----@alias CallbackOnGroupSpawn fun(group_id: integer, peer_id: integer, x: number, y: number, z: number, group_cost: number)
-
--- onVehicleLoad
----@alias CallbackOnVehicleLoad fun(vehicle_id: integer)
-
--- onVehicleUnload
----@alias CallbackOnVehicleUnload fun(vehicle_id: integer)
-
--- onObjectLoad
----@alias CallbackOnObjectLoad fun(object_id: integer)
-
--- setupMain
----@alias CallbackSetupMain fun(is_world_create: boolean)
-
----@alias Callback
----| CallbackOnGroupSpawn
----| CallbackOnVehicleLoad
----| CallbackOnVehicleUnload
----| CallbackOnObjectLoad
----| CallbackSetupMain
-
----@class BindedCallback
----@field callback Callback the callback to call
----@field priority number the priority of the callback.
-
---[[
-
-
-	Variables
-
-
-]]
-
----@type table<string, table<integer, BindedCallback>>
-binded_callbacks = {
-	onGroupSpawn = {},
-	onVehicleLoad = {},
-	onVehicleUnload = {},
-	onObjectLoad = {},
-	setupMain = {}
-}
-
---[[
-
-
-	Functions
-
-
-]]
-
----@param callback_name string the name of the callback to bind to.
----@param callback Callback the callback to bind to the callback.
----@param priority integer? the priority of the callback, higher priority callbacks are called first.
-local function bindCallback(callback_name, callback, priority)
-
-	-- default the priority to 0 if not specified.
-	priority = priority or 0
-
-	-- get the list of binds for this callback.
-	local binds = binded_callbacks[callback_name]
-
-	-- check if the list exists
-	if not binds then
-		-- print an error
-		d.print(("The callback %s is not a valid callback."):format(callback_name), true, 1)
-		return
-	end
-
-	-- define the index to insert the callback at.
-	local insert_index = 1
-
-	-- find the index to insert the callback at (sorted by priority, goes to behind an existing callback if they share the same priority.)
-	for bind_index = 1, #binds do
-		-- if the priority is higher than the current bind's priority, break.
-		if binds[bind_index].priority > priority then
-			break
-		end
-
-		-- otherwise, set insert index to above this one.
-		insert_index = bind_index + 1
-	end
-
-	-- insert the callback at the insert index.
-	table.insert(binds, insert_index, 
-		{
-			callback = callback,
-			priority = priority
-		}
-	)
-end
-
---[[
-
-	onGroupSpawn
-
-]]
-
---[[
-	Inject.
-]]
-
----@diagnostic disable-next-line: undefined-global
-old_onGroupSpawn = onGroupSpawn
-
----@private
-function onGroupSpawn(...)
-
-	-- get the list of binds for this callback.
-	local binds = binded_callbacks.onGroupSpawn
-
-	-- check if the list exists
-	if not binds then
-		return
-	end
-
-	-- call each callback in order
-	for bind_index = 1, #binds do
-		binds[bind_index].callback(...)
-	end
-
-	-- call old callback, if it exists
-	if old_onGroupSpawn then
-		old_onGroupSpawn(...)
-	end
-end
-
---[[
-	Create bind function
-]]
-
---- Function for binding to a the onGroupSpawn callback.
----@param callback CallbackOnGroupSpawn the callback to bind to the onGroupSpawn callback.
----@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
-function Binder.bind.onGroupSpawn(callback, priority)
-	bindCallback(
-		"onGroupSpawn",
-		callback,
-		priority
-	)
-end
-
---[[
-
-	onVehicleLoad
-
-]]
-
---[[
-	Inject.
-]]
-
-old_onVehicleLoad = onVehicleLoad
-
----@private
-function onVehicleLoad(...)
-
-	-- get the list of binds for this callback.
-	local binds = binded_callbacks.onVehicleLoad
-
-	-- check if the list exists
-	if not binds then
-		return
-	end
-
-	-- call each callback in order
-	for bind_index = 1, #binds do
-		binds[bind_index].callback(...)
-	end
-
-	-- call old callback, if it exists
-	if old_onVehicleLoad then
-		old_onVehicleLoad(...)
-	end
-end
-
-
---[[
-	Create bind function
-]]
-
---- Function for binding to a the onVehicleLoad callback.
----@param callback CallbackOnVehicleLoad the callback to bind to the onVehicleLoad callback.
----@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
-function Binder.bind.onVehicleLoad(callback, priority)
-	bindCallback(
-		"onVehicleLoad",
-		callback,
-		priority
-	)
-end
-
---[[
-
-	onVehicleUnload
-
-]]
-
---[[
-	Inject.
-]]
-
-old_onVehicleUnload = onVehicleUnload
-
----@private
-function onVehicleUnload(...)
-
-	-- get the list of binds for this callback.
-	local binds = binded_callbacks.onVehicleUnload
-
-	-- check if the list exists
-	if not binds then
-		return
-	end
-
-	-- call each callback in order
-	for bind_index = 1, #binds do
-		binds[bind_index].callback(...)
-	end
-
-	-- call old callback, if it exists
-	if old_onVehicleUnload then
-		old_onVehicleUnload(...)
-	end
-end
-
---[[
-	Create bind function
-]]
-
---- Function for binding to a the onVehicleUnload callback.
----@param callback CallbackOnVehicleLoad the callback to bind to the onVehicleUnload callback.
----@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
-function Binder.bind.onVehicleUnload(callback, priority)
-	bindCallback(
-		"onVehicleUnload",
-		callback,
-		priority
-	)
-end
-
-
---[[
-
-	onObjectLoad
-
-]]
-
---[[
-	Inject.
-]]
-
-old_onObjectLoad = onObjectLoad
-
----@private
-function onObjectLoad(...)
-
-	-- get the list of binds for this callback.
-	local binds = binded_callbacks.onObjectLoad
-
-	-- check if the list exists
-	if not binds then
-		return
-	end
-
-	-- call each callback in order
-	for bind_index = 1, #binds do
-		binds[bind_index].callback(...)
-	end
-
-	-- call old callback, if it exists
-	if old_onObjectLoad then
-		old_onObjectLoad(...)
-	end
-end
-
---[[
-	Create bind function
-]]
-
---- Function for binding to a the onObjectLoad callback.
----@param callback CallbackOnObjectLoad the callback to bind to the onObjectLoad callback.
----@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
-function Binder.bind.onObjectLoad(callback, priority)
-	bindCallback(
-		"onObjectLoad",
-		callback,
-		priority
-	)
-end
-
---[[
-
-	setupMain
-
-]]
-
----@private
-function bindedSetupMain(...)
-	-- get the list of binds for this callback.
-	local binds = binded_callbacks.setupMain
-
-	-- check if the list exists
-	if not binds then
-		return
-	end
-
-	d.print(string.fromTable(binds))
-
-	-- call each callback in order
-	for bind_index = 1, #binds do
-		binds[bind_index].callback(...)
-	end
-end
-
---[[
-	Create bind function
-]]
-
---- Function for binding to a the setupMain callback.
----@param callback CallbackOnVehicleLoad the callback to bind to the setupMain callback.
----@param priority integer? the priority of the callback, higher priority callbacks are called first. Defaults to 0.
-function Binder.bind.setupMain(callback, priority)
-	bindCallback(
-		"setupMain",
-		callback,
-		priority
-	)
-end
-
--- library name
-IslandRegistry = {}
-
-
---[[
-
-
-	Classes
-
-
-]]
-
----@class IslandRegistryData
----@field by_index table<integer, ISLAND>
----@field by_group_id table<integer, ISLAND>
----@field by_name table<string, ISLAND>
----@field by_faction table<FACTION, table<integer, ISLAND>>
----@field by_land_access table<string, table<integer, ISLAND>>
-
---[[
-
-
-	Constants
-
-
-]]
-
--- Put after the islands are initialized
-ISLAND_REGISTRY_SETUP_MAIN_PRIORITY = ISLAND_SETUP_MAIN_PRIORITY + 1
-
---[[
-
-
-	Variables
-
-
-]]
-
---- @type IslandRegistryData
-IslandRegistry.data = {
-	by_index = {},
-	by_group_id = {},
-	by_name = {},
-	by_faction = {},
-	by_land_access = {}
-}
-
---- @type boolean If the registry has been built
-IslandRegistry.ready = false
-
---[[
-
-
-	Functions
-
-
-]]
-
---- Registers the island in the registry, allowing it to be looked by its index, flag vehicle group id, name, and faction.
---- Also adds the island to the island spatial grid for spatial queries involving islands.
---- @param island ISLAND
-function IslandRegistry.registerIsland(island)
-	if not island then
-		return
-	end
-
-	IslandRegistry.data.by_index[island.index] = island
-
-	if island.flag_vehicle and island.flag_vehicle.group_id then
-		IslandRegistry.data.by_group_id[island.flag_vehicle.group_id] = island
-	end
-
-	IslandRegistry.data.by_name[string.friendly(island.name or "")] = island
-
-	IslandRegistry.data.by_faction[island.faction] = IslandRegistry.data.by_faction[island.faction] or {}
-	IslandRegistry.data.by_faction[island.faction][island.index] = island
-
-	local land_access = Tags.getValue(island.tags, "land_access", true) or "none"
-	IslandRegistry.data.by_land_access[land_access] = IslandRegistry.data.by_land_access[land_access] or {}
-	IslandRegistry.data.by_land_access[land_access][island.index] = island
-
-	-- Also register it in the spatial hash grid
-	if not island_grid.frozen then
-		---@diagnostic disable-next-line: param-type-mismatch
-		SpatialGrid.add(island_grid, island.index, island.transform[13], island.transform[15])
-	else
-		d.print("(IslandRegistry.registerIsland) island_grid is frozen!", true, 1)
-	end
-end
-
---- Changes a islands faction
---- @param island ISLAND
---- @param new_faction FACTION
-function IslandRegistry.setFaction(island, new_faction)
-	if not island then
-		return
-	end
-
-	if island.faction == new_faction then
-		return
-	end
-
-	if IslandRegistry.data.by_faction[island.faction] then
-		IslandRegistry.data.by_faction[island.faction][island.index] = nil
-	end
-
-	island.faction = new_faction
-
-	IslandRegistry.data.by_faction[new_faction] = IslandRegistry.data.by_faction[new_faction] or {}
-	IslandRegistry.data.by_faction[new_faction][island.index] = island
-end
-
---- Rebuilds the entire registry from the island data in g_savedata
-function IslandRegistry.rebuild()
-	start_time = s.getTimeMillisec()
-	IslandRegistry.data = {
-		by_index = {},
-		by_group_id = {},
-		by_name = {},
-		by_faction = {},
-		by_land_access = {}
-	}
-	island_grid = SpatialGrid.new(island_grid.cell_size) -- Reset the grid
-
-	if g_savedata.ai_base_island then
-		IslandRegistry.registerIsland(g_savedata.ai_base_island)
-	end
-
-	if g_savedata.player_base_island then
-		IslandRegistry.registerIsland(g_savedata.player_base_island)
-	end
-
-	for _, island in pairs(g_savedata.islands or {}) do
-		IslandRegistry.registerIsland(island)
-	end
-
-	island_grid = island_grid:freeze()
-
-	IslandRegistry.ready = true
-end
-
---- If the registry hasn't been built yet, builds it. Otherwise does nothing
-function IslandRegistry.ensureReady()
-	if not IslandRegistry.ready then
-		IslandRegistry.rebuild()
-	end
-end
-
---- @param group_id integer
---- @return ISLAND|nil island
-function IslandRegistry.getByGroupID(group_id)
-	IslandRegistry.ensureReady()
-	return IslandRegistry.data.by_group_id[group_id]
-end
-
---- @param island_index integer
---- @return ISLAND|nil island
-function IslandRegistry.getByIndex(island_index)
-	IslandRegistry.ensureReady()
-	return IslandRegistry.data.by_index[island_index]
-end
-
---- @param island_name string
---- @return ISLAND|nil island
-function IslandRegistry.getByName(island_name)
-	IslandRegistry.ensureReady()
-	return IslandRegistry.data.by_name[string.friendly(island_name or "")]
-end
-
---- Returns a table of all islands controlled by a faction
---- Note: this returns a reference to the actual data. If you need to modify it, make a copy first
---- @param faction FACTION
---- @return table<integer, ISLAND>
-function IslandRegistry.getFactionMap(faction)
-	IslandRegistry.ensureReady()
-	return IslandRegistry.data.by_faction[faction] or {}
-end
-
---- Returns a table of all islands with the specified land access
---- Note: this returns a reference to the actual data. If you need to modify it, make a copy first
---- @param land_access string
---- @return table<integer, ISLAND>
-function IslandRegistry.getLandAccessMap(land_access)
-	IslandRegistry.ensureReady()
-	return IslandRegistry.data.by_land_access[land_access] or {}
-end
-
--- Bind rebuild to setupMain
-Binder.bind.setupMain(IslandRegistry.rebuild, ISLAND_REGISTRY_SETUP_MAIN_PRIORITY)
- -- optimized island lookups and handles the island_grid
+ -- controls the payroll system for how many islands you hold. -- optimized island lookups and handles the island_grid
 --[[
 	Capture System - Manages island capture progress, faction changes, and associated events.
 	Provides clean separation of capture mechanics from UI/tick logic.

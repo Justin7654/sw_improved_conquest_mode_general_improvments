@@ -167,12 +167,6 @@ ai_training = {
 
 scout_requirement = time.minute*40
 
-capture_speeds = {
-	1,
-	1.5,
-	1.75
-}
-
 g_holding_pattern = {
 	{
 		x=500,
